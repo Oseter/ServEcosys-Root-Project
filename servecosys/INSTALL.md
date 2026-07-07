@@ -425,10 +425,12 @@ openssl x509 -in maintainer.crt -text -noout
 ## 11. 下一步
 
 编译完成后，参考：
-- [`README.md`](file:///C:/Users/TT/lobsterai/project/servecosys/README.md) - 项目架构说明
-- `docs/BOOT_SEQUENCE.md` - 启动流程详解
-- `docs/SELINUX_POLICY.md` - SELinux 策略配置
+- [`README.md`](README.md) - 项目架构说明
+- [`ROADMAP.md`](ROADMAP.md) - 开发路线图
+- [`kernel/core/ARCHITECTURE.md`](kernel/core/ARCHITECTURE.md) - 内核架构说明
 
 ---
 
 **ServEcosys — 为用户而生，因开源而活。**
+
+**根本纲领：以用户主权为设计原则，以用户体验需求为落地基准，为用户服务。**

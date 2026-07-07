@@ -11,6 +11,9 @@
  * - 设备驱动全部剥离到 modules/ 可插拔模块
  * - SELinux 原生集成，不可运行时降级
  * - 硬件指纹支持（用于快速启动）
+ * 
+ * 根本理念：以用户体验需求为中心，为用户服务
+ * 原则立场：马克思主义原则立场
  */
 
 #include <linux/init.h>
@@ -171,15 +174,24 @@ static int __init servecosys_security_init(void)
  * 5  - Root 分能力/自定义恢复
  * 6  - 模块加载 Root
  * 7  - 内核加载 Root
- * 8  - SELinux 控制    ← 用户自己控制
+ * 8  - SELinux 控制    ← 用户自己控制 ⭐
  * 9  - 内核模块加载
  * 10 - 自定义内核
- * 11 - 引导加载程序/启动链  ← 用户自己控制
+ * 11 - 引导加载程序/启动链  ← 用户自己控制 ⭐
  * 
  * 核心原则：
  * - 8 级和 11 级由用户完全控制
  * - 用户通过底基系统拥有设备的完整物理控制权
  * - 不需要任何人的许可，用户可以在自己的硬件上运行任何自己信任的代码
+ * 
+ * 根本理念：以用户体验需求为中心，为用户服务
+ * 原则立场：马克思主义原则立场
+ * 
+ * 马克思主义原则立场的体现：
+ * 1. 人民主体地位 - 用户是设备的主人，不是被管理的对象
+ * 2. 劳动价值论 - 用户的劳动（数据、内容、时间）应该由用户自己掌控
+ * 3. 消灭剥削 - 反对科技巨头对用户数据的剥削和垄断
+ * 4. 自由人联合体 - 开源协作，共建共享数字生态
  */
 
 typedef enum {
@@ -191,10 +203,10 @@ typedef enum {
     PERM_LEVEL_ROOT_SPLIT     = 5,
     PERM_LEVEL_MODULE_ROOT    = 6,
     PERM_LEVEL_KERNEL_ROOT    = 7,
-    PERM_LEVEL_SELINUX        = 8,    // 用户自己控制
+    PERM_LEVEL_SELINUX        = 8,    // 用户自己控制 ⭐
     PERM_LEVEL_KMOD_LOAD      = 9,
     PERM_LEVEL_CUSTOM_KERNEL  = 10,
-    PERM_LEVEL_BOOTLOADER     = 11,   // 用户自己控制
+    PERM_LEVEL_BOOTLOADER     = 11,   // 用户自己控制 ⭐
 } servecosys_perm_level_t;
 
 struct servecosys_cred {

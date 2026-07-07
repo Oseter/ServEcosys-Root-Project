@@ -144,7 +144,7 @@ ServEcosys 使用 Btrfs 文件系统配合多子卷布局：
 ## 项目目录结构
 
 ```
-/servecosys/                  # 项目根目录 (Root Project)
+/root project/               # 项目根目录 (Root Project)
 ├── base/                     # 底基系统源码与构建脚本
 │   ├── core/                 # 底基系统核心（最小化运行时）
 │   ├── drivers/              # 底基系统可直接调用的硬件驱动（可选）

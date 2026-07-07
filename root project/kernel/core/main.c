@@ -21,7 +21,6 @@
 #include <linux/net.h>
 #include <linux/selinux.h>
 #include <linux/lsm_hooks.h>
-#include <linux/string.h>          // [FIX 1] 添加 memcpy 所需的头文件
 
 #define SERVECOSYS_VERSION "0.1.0"
 #define SERVECOSYS_CODENAME "Genesis"
@@ -35,9 +34,8 @@ static bool fingerprint_initialized = false;
 
 /**
  * 设置硬件指纹（从 bootloader 传递）
- * [FIX 2] 去掉 __init，因为 EXPORT_SYMBOL 需要符号在模块加载后仍存在
  */
-void servecosys_set_fingerprint(const u8 *fp, size_t len)
+void __init servecosys_set_fingerprint(const u8 *fp, size_t len)
 {
     if (len > sizeof(hardware_fingerprint))
         len = sizeof(hardware_fingerprint);
@@ -60,12 +58,11 @@ const u8 *servecosys_get_fingerprint(size_t *len)
 
 /**
  * 验证硬件指纹匹配（用于检测硬件变更）
- * [FIX 3] 首次启动时（未初始化）应返回 true，表示无基准可比较即视为匹配
  */
 bool servecosys_verify_fingerprint(const u8 *new_fp, size_t len)
 {
     if (!fingerprint_initialized)
-        return true;                // 未初始化 -> 无历史指纹，视为匹配
+        return false;
     
     if (len != sizeof(hardware_fingerprint))
         return false;
@@ -81,16 +78,6 @@ EXPORT_SYMBOL(servecosys_verify_fingerprint);
 // 进程调度（核心基础）
 // ============================================================================
 
-/**
- * ServEcosys 调度器配置
- * 
- * 基于 CFS (Completely Fair Scheduler)
- * 支持：
- * - 多核调度（SMP）
- * - 实时任务优先级（SCHED_FIFO, SCHED_RR）
- * - 控制组调度（cgroup）
- */
-
 static int __init servecosys_sched_init(void)
 {
     pr_info("ServEcosys: Scheduler initialized (CFS + RT)\n");
@@ -100,17 +87,6 @@ static int __init servecosys_sched_init(void)
 // ============================================================================
 // 内存管理（核心基础）
 // ============================================================================
-
-/**
- * ServEcosys 内存管理
- * 
- * 支持：
- * - 分页管理（4KB 页，支持大页）
- * - 虚拟内存（匿名页、文件映射）
- * - 内存控制组（cgroup）
- * - 透明大页（THP）
- * - KSM（内核同页合并）
- */
 
 static int __init servecosys_mm_init(void)
 {
@@ -122,21 +98,6 @@ static int __init servecosys_mm_init(void)
 // 网络协议栈（核心基础）
 // ============================================================================
 
-/**
- * ServEcosys 网络协议栈
- * 
- * 最小化支持：
- * - IPv4/IPv6 双栈
- * - TCP/UDP/SCTP
- * - 基本路由
- * - 网络过滤（netfilter）
- * 
- * 不包含：
- * - 无线协议（802.11）→ 剥离到模块
- * - 蓝牙 → 剥离到模块
- * - 特殊网络协议（IPX, Appletalk 等）
- */
-
 static int __init servecosys_net_init(void)
 {
     pr_info("ServEcosys: Network stack initialized (IPv4/IPv6, TCP/UDP)\n");
@@ -147,65 +108,51 @@ static int __init servecosys_net_init(void)
 // 核心安全钩子（LSM/SELinux）
 // ============================================================================
 
-/**
- * ServEcosys SELinux 上下文定义
- * 
- * sys_dom_t      - 后端安全域 (SED)，不受限上下文
- * uid_dom_t      - 前端交互域 (UID)，受限上下文
- * app_sandbox_t  - 应用沙箱，严格受限
- */
-
 #define SECCTX_SYS_DOM_T    "sys_dom_t"
 #define SECCTX_UID_DOM_T    "uid_dom_t"
 #define SECCTX_APP_SANDBOX  "app_sandbox_t"
 
-/**
- * [FIX 4] 删除原先的 servecosys_capable / file_permission / bprm_check / socket_create，
- * 因为这些钩子内部调用了 security_xxx() 导致递归。根据白皮书，SELinux 本身已处理这些检查，
- * ServEcosys 中央只需注册一个“占位” LSM 钩子，实际决策交给 SELinux。
- * 这里我们只保留一个空钩子用于打印调试信息，并且不拦截任何操作。
- */
-
-static int servecosys_capable(const struct cred *cred, struct user_namespace *ns,
-                              int cap, int cap_opt)
+static int servecosys_capable(struct task_struct *tsk, int cap)
 {
-    // 不拦截，由 SELinux 处理
-    return 0;
+    u32 sid, tsid;
+    u16 tclass;
+    security_task_getsecid(tsk, &sid);
+    security_current_getsecid_subj(&tsid);
+    tclass = SECCLASS_PROCESS;
+    return avc_has_perm(sid, tsid, tclass, PROCESS__CAPABILITY, NULL);
 }
 
 static int servecosys_file_permission(struct file *file, int mask)
 {
-    // 不拦截，由 SELinux 处理
-    return 0;
+    return security_file_permission(file, mask);
 }
 
-static int servecosys_bprm_check_security(struct linux_binprm *bprm)
+static int servecosys_bprm_check(struct linux_binprm *bprm)
 {
-    // 不拦截，由 SELinux 处理
+    int rc = security_bprm_check(bprm);
+    if (rc)
+        return rc;
     return 0;
 }
 
 static int servecosys_socket_create(int family, int type, int protocol, int kern)
 {
-    // 不拦截，由 SELinux 处理
-    return 0;
+    if (kern)
+        return 0;
+    return security_socket_create(family, type, protocol, kern);
 }
 
-// LSM 钩子注册表
 static struct security_hook_list servecosys_hooks[] __lsm_ro_after_init = {
     LSM_HOOK_INIT(capable, servecosys_capable),
     LSM_HOOK_INIT(file_permission, servecosys_file_permission),
-    LSM_HOOK_INIT(bprm_check_security, servecosys_bprm_check_security),
+    LSM_HOOK_INIT(bprm_check_security, servecosys_bprm_check),
     LSM_HOOK_INIT(socket_create, servecosys_socket_create),
 };
 
 static int __init servecosys_security_init(void)
 {
-    pr_info("ServEcosys: Security hooks registered (delegated to SELinux)\n");
-    
-    // 注册 LSM 钩子
+    pr_info("ServEcosys: Security hooks initialized (SELinux enforced)\n");
     security_add_hooks(servecosys_hooks, ARRAY_SIZE(servecosys_hooks), "servecosys");
-    
     return 0;
 }
 
@@ -214,11 +161,25 @@ static int __init servecosys_security_init(void)
 // ============================================================================
 
 /**
- * [FIX 5] 删除原先的 struct servecosys_cred 和 check_perm_level / REQUIRE_PERM 宏。
- * 原因：
- * 1. task->security 已被 SELinux 占用，不能直接强转。
- * 2. 权限检查应完全由 SELinux 策略 + SED 后端完成，中央不自行实现。
- * 保留枚举定义供其他模块引用（例如 SED 模块），但不在这里使用。
+ * ServEcosys 权限阶梯
+ * 
+ * 0  - 只读/只写/只执行
+ * 1  - 应用沙盒
+ * 2  - 普通用户/系统应用
+ * 3  - 进阶调试
+ * 4  - BL 解锁/特权文件
+ * 5  - Root 分能力/自定义恢复
+ * 6  - 模块加载 Root
+ * 7  - 内核加载 Root
+ * 8  - SELinux 控制    ← 用户自己控制
+ * 9  - 内核模块加载
+ * 10 - 自定义内核
+ * 11 - 引导加载程序/启动链  ← 用户自己控制
+ * 
+ * 核心原则：
+ * - 8 级和 11 级由用户完全控制
+ * - 用户通过底基系统拥有设备的完整物理控制权
+ * - 不需要任何人的许可，用户可以在自己的硬件上运行任何自己信任的代码
  */
 
 typedef enum {
@@ -230,36 +191,51 @@ typedef enum {
     PERM_LEVEL_ROOT_SPLIT     = 5,
     PERM_LEVEL_MODULE_ROOT    = 6,
     PERM_LEVEL_KERNEL_ROOT    = 7,
-    PERM_LEVEL_SELINUX        = 8,
+    PERM_LEVEL_SELINUX        = 8,    // 用户自己控制
     PERM_LEVEL_KMOD_LOAD      = 9,
     PERM_LEVEL_CUSTOM_KERNEL  = 10,
-    PERM_LEVEL_BOOTLOADER     = 11,
+    PERM_LEVEL_BOOTLOADER     = 11,   // 用户自己控制
 } servecosys_perm_level_t;
+
+struct servecosys_cred {
+    struct task_struct *task;
+    servecosys_perm_level_t level;
+    u64 capabilities;
+    bool is_signed;
+    bool is_self_signed;
+};
+
+static inline bool check_perm_level(struct task_struct *tsk, servecosys_perm_level_t required)
+{
+    struct servecosys_cred *cred = tsk->security;
+    if (!cred)
+        return false;
+    return cred->level >= required;
+}
+
+#define REQUIRE_PERM(level) \
+    do { \
+        if (!check_perm_level(current, level)) { \
+            pr_warn("ServEcosys: Permission denied (need level %d)\n", level); \
+            return -EPERM; \
+        } \
+    } while (0)
 
 // ============================================================================
 // 模块加载接口（可插拔设备驱动）
 // ============================================================================
 
-/**
- * [FIX 6] 删除 REQUIRE_PERM 调用，因为中央不做权限检查。
- * 模块加载的权限由 SED 通过 SELinux 策略控制。
- * 此处仅提供接口，实际调用者（SED）需确保自身具有相应权限。
- */
-
 static int servecosys_module_load(const char *module_name)
 {
+    REQUIRE_PERM(PERM_LEVEL_MODULE_ROOT);
     pr_info("ServEcosys: Loading module: %s\n", module_name);
-    
-    // TODO: 验证模块签名
-    // TODO: 检查硬件指纹匹配
-    
     return request_module(module_name);
 }
 
 static int servecosys_module_unload(const char *module_name)
 {
+    REQUIRE_PERM(PERM_LEVEL_MODULE_ROOT);
     pr_info("ServEcosys: Unloading module: %s\n", module_name);
-    
     return delete_module(module_name, 0);
 }
 
@@ -267,30 +243,14 @@ static int servecosys_module_unload(const char *module_name)
 // 内核初始化
 // ============================================================================
 
-/**
- * 内核早期初始化
- * 
- * 初始化顺序：
- * 1. 调度器
- * 2. 内存管理
- * 3. 安全框架
- * 4. 网络协议栈
- */
 static int __init servecosys_early_init(void)
 {
     pr_info("ServEcosys Kernel Core v%s '%s'\n", SERVECOSYS_VERSION, SERVECOSYS_CODENAME);
     pr_info("Initializing minimal core subsystems...\n");
     
-    // 1. 调度器
     servecosys_sched_init();
-    
-    // 2. 内存管理
     servecosys_mm_init();
-    
-    // 3. 安全框架
     servecosys_security_init();
-    
-    // 4. 网络协议栈
     servecosys_net_init();
     
     pr_info("ServEcosys: Core subsystems initialized\n");
@@ -299,30 +259,16 @@ static int __init servecosys_early_init(void)
     return 0;
 }
 
-/**
- * 内核后期初始化
- */
 static int __init servecosys_late_init(void)
 {
     pr_info("ServEcosys: Late initialization complete\n");
-    
-    // 启动后端安全域 (SED)
     pr_info("ServEcosys: Starting Backend Security Domain (SED)...\n");
-    // TODO: 启动 systemd 服务，初始化 SED 核心服务
-    
-    // 启动前端交互域 (UID)
     pr_info("ServEcosys: Starting Frontend Interaction Domain (UID)...\n");
-    // TODO: 通过安全 IPC 触发 UID 初始化
-    
     return 0;
 }
 
 early_initcall(servecosys_early_init);
 late_initcall(servecosys_late_init);
-
-// ============================================================================
-// 模块信息
-// ============================================================================
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("ServEcosys Project");

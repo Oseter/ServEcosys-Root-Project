@@ -1,0 +1,95 @@
+#!/bin/sh
+#
+# ServEcosys Initramfs Init Script
+#
+# 职责：
+# 1. 挂载伪文件系统（proc, sysfs, devtmpfs）
+# 2. 加载硬件指纹模块
+# 3. 探测并挂载 Btrfs 根子卷
+# 4. 切换到真实根文件系统
+#
+
+set -e
+
+export PATH=/bin:/sbin
+
+echo "ServEcosys initramfs v0.1.0"
+echo ""
+
+# 挂载伪文件系统
+echo "[1/6] Mounting pseudo filesystems..."
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mount -t devpts devpts /dev/pts
+
+# 加载必要模块
+echo "[2/6] Loading kernel modules..."
+modprobe -q btrfs || true
+modprobe -q servecosys_probe || true
+
+# 读取硬件指纹（如果可用）
+echo "[3/6] Initializing hardware fingerprint..."
+if [ -f /sys/kernel/servecosys/fingerprint ]; then
+    FINGERPRINT=$(cat /sys/kernel/servecosys/fingerprint)
+    echo "Hardware fingerprint: $FINGERPRINT"
+else
+    echo "Hardware fingerprint not available (normal for first boot)"
+fi
+
+# 查找根设备
+echo "[4/6] Searching for root device..."
+ROOT_DEV=""
+
+# 尝试常见设备
+for dev in /dev/sda2 /dev/nvme0n1p2 /dev/mmcblk0p2; do
+    if [ -b "$dev" ]; then
+        # 检查是否为 Btrfs
+        if blkid -t TYPE=btrfs "$dev" > /dev/null 2>&1; then
+            ROOT_DEV="$dev"
+            echo "Found Btrfs root: $ROOT_DEV"
+            break
+        fi
+    fi
+done
+
+if [ -z "$ROOT_DEV" ]; then
+    echo "ERROR: No Btrfs root device found!"
+    echo "Dropping to emergency shell..."
+    exec /bin/sh
+fi
+
+# 挂载 Btrfs 系统子卷
+echo "[5/6] Mounting Btrfs @system subvolume..."
+mkdir -p /mnt
+mount -o subvol=@system,ro "$ROOT_DEV" /mnt
+
+# 检查快照配置
+SNAPSHOT_ID=""
+if [ -f /mnt/boot/servecosys/snapshot.conf ]; then
+    SNAPSHOT_ID=$(grep "^SNAPSHOT=" /mnt/boot/servecosys/snapshot.conf | cut -d= -f2)
+    if [ -n "$SNAPSHOT_ID" ] && [ "$SNAPSHOT_ID" != "LATEST" ]; then
+        echo "Booting from snapshot: $SNAPSHOT_ID"
+        umount /mnt
+        mount -o subvol=@snapshots/$SNAPSHOT_ID,ro "$ROOT_DEV" /mnt
+    fi
+fi
+
+# 切换到真实根
+echo "[6/6] Switching to real root..."
+
+# 创建必要目录
+mkdir -p /mnt/proc /mnt/sys /mnt/dev /mnt/run
+
+# 移动挂载点
+mount --move /proc /mnt/proc
+mount --move /sys /mnt/sys
+mount --move /dev /mnt/dev
+mount --move /dev/pts /mnt/dev/pts
+
+# 执行 init
+exec switch_root /mnt /sbin/init
+
+# 如果 switch_root 失败
+echo "ERROR: Failed to switch root!"
+exec /bin/sh

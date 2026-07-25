@@ -1,0 +1,150 @@
+name: Build ServEcosys Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      image_size:
+        description: 'Disk image size'
+        required: false
+        default: '4G'
+        type: choice
+        options:
+          - 2G
+          - 4G
+          - 8G
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc make \
+            gnu-efi libgnuefi-dev \
+            bc kmod cpio openssl \
+            bison flex libssl-dev libelf-dev \
+            parted dosfstools btrfs-progs \
+            qemu-system-x86 ovmf \
+            busybox-static \
+            cpio
+
+      - name: Download Linux kernel source
+        run: |
+          cd "root project"
+          mkdir -p build
+          wget -q https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.tar.xz
+          tar -xf linux-6.6.tar.xz
+          mv linux-6.6 kernel/linux-src
+
+      - name: Build bootloader
+        run: |
+          cd "root project/boot"
+          make clean 2>/dev/null || true
+          make ARCH=x86_64
+          cp bootloader.efi ../build/
+
+      - name: Build kernel
+        run: |
+          cd "root project/kernel/linux-src"
+          cp ../core/servecosys_defconfig .config
+          make olddefconfig
+          make -j$(nproc) bzImage
+          cp arch/x86/boot/bzImage ../../build/vmlinuz
+
+      - name: Build kernel modules
+        run: |
+          cd "root project/kernel/linux-src"
+          make -j$(nproc) modules
+          make modules_install INSTALL_MOD_PATH=../../build/modules
+
+      - name: Generate initramfs
+        run: |
+          cd "root project"
+          INITRAMFS_SRC=scripts/initramfs
+
+          # Copy busybox
+          mkdir -p $INITRAMFS_SRC/bin
+          cp $(which busybox) $INITRAMFS_SRC/bin/
+          cd $INITRAMFS_SRC/bin
+          for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep; do
+            ln -sf busybox $cmd 2>/dev/null || true
+          done
+
+          # Copy init script
+          cd "$GITHUB_WORKSPACE/root project"
+          chmod +x $INITRAMFS_SRC/init
+
+          # Pack
+          cd $INITRAMFS_SRC
+          find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
+
+      - name: Sign kernel
+        run: |
+          cd "root project"
+          mkdir -p scripts/keys
+
+          # Generate keys
+          openssl genrsa -out scripts/keys/maintainer.key 4096 2>/dev/null
+          openssl req -new -key scripts/keys/maintainer.key \
+            -out scripts/keys/maintainer.csr \
+            -subj "/CN=ServEcosys/CN=CI Build" 2>/dev/null
+          openssl x509 -req -days 365 -in scripts/keys/maintainer.csr \
+            -signkey scripts/keys/maintainer.key \
+            -out scripts/keys/maintainer.crt 2>/dev/null
+
+          # Sign
+          openssl dgst -sha256 -sign scripts/keys/maintainer.key \
+            -out build/vmlinuz.sig build/vmlinuz
+
+      - name: Build backend deps (.smle)
+        run: |
+          cd "root project/backend/deps"
+          make all
+
+      - name: Build SED daemons (.smle)
+        run: |
+          cd "root project/backend/sub_kernel"
+          make all
+
+      - name: Build frontend deps (.ssle)
+        run: |
+          cd "root project/frontend/deps"
+          make all
+
+      - name: Build UID daemons (.ssle)
+        run: |
+          cd "root project/frontend/ui"
+          make all
+
+      - name: Generate disk image
+        run: |
+          cd "root project"
+          chmod +x scripts/build_image.sh
+          sudo ./scripts/build_image.sh -s 4G -o build/servecosys.img
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: servecosys-image
+          path: root project/build/servecosys.img
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload all build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            root project/build/vmlinuz
+            root project/build/initramfs.cpio.gz
+            root project/build/bootloader.efi
+            root project/build/sed/*.smle
+            root project/build/uid/*.ssle
+          retention-days: 7

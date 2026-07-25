@@ -77,6 +77,43 @@ EXPORT_SYMBOL(servecosys_get_fingerprint);
 EXPORT_SYMBOL(servecosys_verify_fingerprint);
 
 // ============================================================================
+// SysFS 接口（硬件指纹对外暴露）
+// ============================================================================
+
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+
+static struct kobject *servecosys_kobj;
+
+static ssize_t fingerprint_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    size_t len = sizeof(hardware_fingerprint);
+    ssize_t pos = 0;
+
+    for (size_t i = 0; i < len; i++)
+        pos += sprintf(buf + pos, "%02x", hardware_fingerprint[i]);
+    pos += sprintf(buf + pos, "\n");
+    return pos;
+}
+
+static struct kobj_attribute fingerprint_attribute = __ATTR_RO(fingerprint);
+
+static int __init servecosys_sysfs_init(void)
+{
+    int ret;
+
+    servecosys_kobj = kobject_create_and_add("servecosys", kernel_kobj);
+    if (!servecosys_kobj)
+        return -ENOMEM;
+
+    ret = sysfs_create_file(servecosys_kobj, &fingerprint_attribute.attr);
+    if (ret)
+        kobject_put(servecosys_kobj);
+
+    return ret;
+}
+
+// ============================================================================
 // 进程调度（核心基础）
 // ============================================================================
 

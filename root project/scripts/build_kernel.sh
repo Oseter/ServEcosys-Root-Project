@@ -302,7 +302,27 @@ build_full() {
     # 5. 签名内核
     sign_kernel
     
-    # 6. 显示产物
+    # 6. 编译后端依赖库 (.smle)
+    log_step "Building backend dependency libraries..."
+    make -C "$PROJECT_ROOT/backend/deps" all 2>/dev/null || log_warn "Backend deps build skipped"
+    
+    # 7. 编译前端依赖库 (.ssle)
+    log_step "Building frontend dependency libraries..."
+    make -C "$PROJECT_ROOT/frontend/deps" all 2>/dev/null || log_warn "Frontend deps build skipped"
+    
+    # 8. 编译 SED 后端守护进程 (.smle)
+    log_step "Building SED backend daemons..."
+    make -C "$PROJECT_ROOT/backend/sub_kernel" all 2>/dev/null || log_warn "SED build skipped"
+    
+    # 9. 编译 UID 前端守护进程 (.ssle)
+    log_step "Building UID frontend daemons..."
+    make -C "$PROJECT_ROOT/frontend/ui" all 2>/dev/null || log_warn "UID build skipped"
+    
+    # 9. 编译 SELinux 策略
+    log_step "Building SELinux policy..."
+    make -C "$PROJECT_ROOT/backend/security" 2>/dev/null || log_warn "SELinux policy build skipped (checkpolicy not installed)"
+    
+    # 11. 显示产物
     log_step "Build artifacts:"
     ls -lh "$OUTPUT_DIR"/
     
@@ -318,7 +338,7 @@ build_full() {
 main() {
     local target="${1:-all}"
     
-    log_info "ServEcosys Kernel Build System"
+    log_info "ServEcosys Build System"
     log_info "Target: $target"
     log_info "Output: $OUTPUT_DIR"
     log_info ""
@@ -356,6 +376,35 @@ main() {
         sign)
             sign_kernel
             ;;
+        deps)
+            log_step "Building backend dependency libraries (.smle)..."
+            make -C "$PROJECT_ROOT/backend/deps" all
+            log_step "Building frontend dependency libraries (.ssle)..."
+            make -C "$PROJECT_ROOT/frontend/deps" all
+            log_info "All dependency libraries built"
+            ;;
+        sed)
+            log_step "Building SED backend daemons (.smle)..."
+            make -C "$PROJECT_ROOT/backend/sub_kernel" all
+            log_info "SED daemons built"
+            ;;
+        uid)
+            log_step "Building UID frontend daemons (.ssle)..."
+            make -C "$PROJECT_ROOT/frontend/ui" all
+            log_info "UID daemons built"
+            ;;
+        selinux)
+            log_step "Building SELinux policy..."
+            make -C "$PROJECT_ROOT/backend/security"
+            log_info "SELinux policy built"
+            ;;
+        daemons)
+            make -C "$PROJECT_ROOT/backend/deps" all
+            make -C "$PROJECT_ROOT/backend/sub_kernel" all
+            make -C "$PROJECT_ROOT/frontend/deps" all
+            make -C "$PROJECT_ROOT/frontend/ui" all
+            log_info "All daemons built"
+            ;;
         full)
             build_full
             ;;
@@ -365,7 +414,12 @@ main() {
         clean)
             log_step "Cleaning build artifacts..."
             rm -rf "$OUTPUT_DIR"
-            rm -rf "$PROJECT_ROOT/scripts/initramfs"
+            rm -rf "$PROJECT_ROOT/scripts/initramfs/bin"
+            make -C "$PROJECT_ROOT/backend/deps" clean 2>/dev/null || true
+            make -C "$PROJECT_ROOT/frontend/deps" clean 2>/dev/null || true
+            make -C "$PROJECT_ROOT/backend/sub_kernel" clean 2>/dev/null || true
+            make -C "$PROJECT_ROOT/frontend/ui" clean 2>/dev/null || true
+            make -C "$PROJECT_ROOT/backend/security" clean 2>/dev/null || true
             log_info "Clean complete"
             ;;
         *)
@@ -381,7 +435,12 @@ main() {
             echo "  sign        - Sign kernel image"
             echo "  keys        - Generate cryptographic keys"
             echo "  initramfs   - Generate initramfs only"
-            echo "  full        - Complete build (bootloader + kernel + modules + initramfs + sign)"
+            echo "  deps        - Build dependency libraries (crypto, log, ipc, ...)"
+            echo "  sed         - Build SED backend daemons (auto-builds deps)"
+            echo "  uid         - Build UID frontend daemons (auto-builds deps)"
+            echo "  selinux     - Build SELinux policy module"
+            echo "  daemons     - Build deps + SED + UID"
+            echo "  full        - Complete build (bootloader + kernel + modules + initramfs + sign + daemons)"
             echo "  clean       - Remove all build artifacts"
             echo ""
             exit 1

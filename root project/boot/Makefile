@@ -73,7 +73,7 @@ OBJCOPY_FLAGS = -j .text \
                 --target=$(OBJCOPY_TARGET)
 
 # 源文件
-SRCS = bootloader.c
+SRCS = bootloader.c crypto.c
 OBJS = $(SRCS:.c=.o)
 TARGET_SO = $(TARGET).so
 TARGET_EFI = $(TARGET).efi

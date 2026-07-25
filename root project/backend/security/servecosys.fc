@@ -1,0 +1,62 @@
+# ServEcosys SELinux File Contexts
+# This file defines SELinux labels for all ServEcosys system files.
+
+# ==========================================
+# Backend Security Domain (SED) Files
+# ==========================================
+
+# SED executables (.smle format)
+/system/backend/bin(/.*)?                    gen_context(system_u:object_r:sys_dom_exec_t,s0)
+/system/backend/bin/selinux_manager\.smle     -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
+/system/backend/bin/hal_manager\.smle          -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
+/system/backend/bin/permission裁决\.smle       -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
+/system/backend/bin/oipes_client\.smle         -- gen_context(system_u:object_r:oipes_client_t,s0)
+
+# SED configuration and data
+/system/backend/etc(/.*)?                     gen_context(system_u:object_r:sys_data_t,s0)
+/system/backend/data(/.*)?                    gen_context(system_u:object_r:sys_data_t,s0)
+
+# ==========================================
+# Frontend Interaction Domain (UID) Files
+# ==========================================
+
+# UID executables (.ssle format)
+/system/frontend/bin(/.*)?                    gen_context(system_u:object_r:uid_dom_exec_t,s0)
+/system/frontend/bin/display_server\.ssle      -- gen_context(system_u:object_r:uid_dom_exec_t,s0)
+/system/frontend/bin/input_manager\.ssle       -- gen_context(system_u:object_r:uid_dom_exec_t,s0)
+/system/frontend/bin/compositor\.ssle          -- gen_context(system_u:object_r:uid_dom_exec_t,s0)
+/system/frontend/bin/statusbar\.ssle           -- gen_context(system_u:object_r:uid_dom_exec_t,s0)
+/system/frontend/bin/notification\.ssle        -- gen_context(system_u:object_r:uid_dom_exec_t,s0)
+
+# Application containers
+/system/frontend/apps/system(/.*)?            gen_context(system_u:object_r:app_sandbox_t,s0)
+/system/frontend/apps/third_party(/.*)?       gen_context(system_u:object_r:app_sandbox_t,s0)
+/system/app-data(/.*)?                        gen_context(system_u:object_r:app_data_t,s0)
+
+# ==========================================
+# System Files
+# ==========================================
+
+# Init system
+/sbin/init                                    -- gen_context(system_u:object_r:init_t,s0)
+
+# Boot configuration
+/boot/servecosys(/.*)?                         gen_context(system_u:object_r:sys_data_t,s0)
+/boot/servecosys/snapshot\.conf                -- gen_context(system_u:object_r:sys_data_t,s0)
+/boot/servecosys/fingerprint\.bin              -- gen_context(system_u:object_r:sys_data_t,s0)
+/boot/servecosys/session\.key                  -- gen_context(system_u:object_r:sys_data_t,s0)
+
+# ==========================================
+# Proc and Sysfs
+# ==========================================
+
+/proc/servecosys(/.*)?                        gen_context(system_u:object_r:servecosys_proc_t,s0)
+/sys/kernel/servecosys(/.*)?                  gen_context(system_u:object_r:servecosys_sysfs_t,s0)
+
+# ==========================================
+# Kernel Modules
+# ==========================================
+
+/lib/modules/.*/servecosys_probe\.ko           -- gen_context(system_u:object_r:servecosys_probe_module_t,s0)
+/lib/modules/.*/servecosys_pc\.ko               -- gen_context(system_u:object_r:servecosys_pc_module_t,s0)
+/lib/modules/.*/servecosys_mobile\.ko           -- gen_context(system_u:object_r:servecosys_mobile_module_t,s0)

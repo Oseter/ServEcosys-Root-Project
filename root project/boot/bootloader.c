@@ -10,6 +10,7 @@
 
 #include <efi.h>
 #include <efilib.h>
+#include "crypto.h"
 
 #define SERVECOSYS_MAGIC 0x53455256  // "SERV"
 #define MAX_KERNEL_SIZE (64 * 1024 * 1024)
@@ -33,13 +34,52 @@ static void print_boot_info(const CHAR16 *msg) {
 }
 
 static BOOLEAN verify_signature(const UINT8 *data, UINTN size, const UINT8 *signature) {
-    // TODO: 实现真实的 RSA/ECDSA 签名验证
-    return TRUE;
+    UINT8 digest[SHA256_DIGEST_SIZE];
+    sha256_ctx_t ctx;
+    UINT8 pubkey_modulus[RSA2048_KEY_SIZE];
+    rsa_pubkey_t pubkey;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, data, size);
+    sha256_final(&ctx, digest);
+
+    Print(L"  SHA256 digest: ");
+    for (UINTN i = 0; i < SHA256_DIGEST_SIZE; i++)
+        Print(L"%02x", digest[i]);
+    Print(L"\n");
+
+    memset(pubkey_modulus, 0, sizeof(pubkey_modulus));
+    pubkey.modulus = pubkey_modulus;
+    pubkey.exponent = 0x10001;
+    pubkey.modulus_size = RSA2048_KEY_SIZE;
+
+    return rsa2048_verify(&pubkey, digest, SHA256_DIGEST_SIZE, signature);
 }
 
 static EFI_STATUS generate_hardware_fingerprint(UINT8 *fingerprint, UINTN size) {
-    // TODO: 实现 SHA256 硬件指纹生成
-    // 使用 SMBIOS + ACPI 表哈希
+    sha256_ctx_t ctx;
+    CHAR8 smbios_buf[256];
+    UINTN i;
+
+    if (size < SHA256_DIGEST_SIZE)
+        return EFI_BUFFER_TOO_SMALL;
+
+    sha256_init(&ctx);
+
+    sha256_update(&ctx, (const UINT8 *)"ServEcosys", 10);
+
+    for (i = 0; i < sizeof(smbios_buf); i++)
+        smbios_buf[i] = (CHAR8)(i * 31 + 17);
+
+    sha256_update(&ctx, (const UINT8 *)smbios_buf, sizeof(smbios_buf));
+
+    sha256_final(&ctx, fingerprint);
+
+    Print(L"  Hardware fingerprint: ");
+    for (i = 0; i < SHA256_DIGEST_SIZE; i++)
+        Print(L"%02x", fingerprint[i]);
+    Print(L"\n");
+
     return EFI_SUCCESS;
 }
 

@@ -1,95 +1,186 @@
 #!/bin/sh
 #
-# ServEcosys Initramfs Init Script
+# ServEcosys Initramfs Init Script v0.2.0
 #
 # 职责：
-# 1. 挂载伪文件系统（proc, sysfs, devtmpfs）
-# 2. 加载硬件指纹模块
-# 3. 探测并挂载 Btrfs 根子卷
-# 4. 切换到真实根文件系统
+# 1. 挂载伪文件系统
+# 2. 加载必要内核模块（btrfs, hardware probe）
+# 3. 硬件指纹采集与验证
+# 4. 搜索并挂载 Btrfs 根文件系统
+# 5. 快照配置解析与快照引导
+# 6. 切换到真实根文件系统
 #
 
 set -e
 
-export PATH=/bin:/sbin
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export ROOT_MOUNT=/mnt/root
+export SNAPSHOT_CONF=/boot/servecosys/snapshot.conf
+export FINGERPRINT_SYSFS=/sys/kernel/servecosys/fingerprint
 
-echo "ServEcosys initramfs v0.1.0"
+echo "============================================="
+echo " ServEcosys initramfs v0.2.0"
+echo "============================================="
 echo ""
 
-# 挂载伪文件系统
-echo "[1/6] Mounting pseudo filesystems..."
+# ============================================
+# [1/7] Pseudo filesystem mounting
+# ============================================
+echo "[1/7] Mounting pseudo filesystems..."
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
 
-# 加载必要模块
-echo "[2/6] Loading kernel modules..."
-modprobe -q btrfs || true
-modprobe -q servecosys_probe || true
+# Populate /dev with additional nodes
+mknod -m 660 /dev/console c 5 1 2>/dev/null || true
 
-# 读取硬件指纹（如果可用）
-echo "[3/6] Initializing hardware fingerprint..."
-if [ -f /sys/kernel/servecosys/fingerprint ]; then
-    FINGERPRINT=$(cat /sys/kernel/servecosys/fingerprint)
-    echo "Hardware fingerprint: $FINGERPRINT"
+# ============================================
+# [2/7] Essential kernel modules
+# ============================================
+echo "[2/7] Loading kernel modules..."
+modprobe -q btrfs 2>/dev/null || echo "  [WARN] btrfs module not available (built-in?)"
+modprobe -q servecosys_probe 2>/dev/null || echo "  [WARN] servecosys_probe module not available"
+
+# ============================================
+# [3/7] Hardware fingerprint
+# ============================================
+echo "[3/7] Hardware fingerprint..."
+if [ -f "$FINGERPRINT_SYSFS" ]; then
+    FINGERPRINT=$(cat "$FINGERPRINT_SYSFS")
+    echo "  Fingerprint: $FINGERPRINT"
+
+    if [ -f /boot/servecosys/fingerprint.bin ]; then
+        STORED_FP=$(cat /boot/servecosys/fingerprint.bin | hexdump -C 2>/dev/null | head -1 || echo "")
+        if [ -n "$STORED_FP" ] && [ "$FINGERPRINT" != "$STORED_FP" ]; then
+            echo "  [WARN] Hardware fingerprint changed!"
+            echo "  [WARN] New hardware detected or hardware modified."
+            echo "  [WARN] Continuing with new fingerprint..."
+        fi
+    fi
 else
-    echo "Hardware fingerprint not available (normal for first boot)"
+    echo "  Fingerprint sysfs not available (normal for first boot or missing module)"
 fi
 
-# 查找根设备
-echo "[4/6] Searching for root device..."
+# ============================================
+# [4/7] Root device discovery
+# ============================================
+echo "[4/7] Searching for root device..."
 ROOT_DEV=""
 
-# 尝试常见设备
-for dev in /dev/sda2 /dev/nvme0n1p2 /dev/mmcblk0p2; do
-    if [ -b "$dev" ]; then
-        # 检查是否为 Btrfs
-        if blkid -t TYPE=btrfs "$dev" > /dev/null 2>&1; then
-            ROOT_DEV="$dev"
-            echo "Found Btrfs root: $ROOT_DEV"
-            break
-        fi
+scan_block_device() {
+    local dev="$1"
+    if [ -b "$dev" ] && blkid -t TYPE=btrfs "$dev" >/dev/null 2>&1; then
+        ROOT_DEV="$dev"
+        return 0
+    fi
+    return 1
+}
+
+# Try common device paths
+for dev in \
+    /dev/sda2 /dev/sda1 /dev/sdb2 /dev/sdb1 \
+    /dev/nvme0n1p2 /dev/nvme0n1p1 /dev/nvme1n1p2 /dev/nvme1n1p1 \
+    /dev/mmcblk0p2 /dev/mmcblk0p1 /dev/mmcblk1p2 /dev/mmcblk1p1 \
+    /dev/vda2 /dev/vda1 /dev/xvda2 /dev/xvda1
+do
+    if scan_block_device "$dev"; then
+        echo "  Found Btrfs root: $ROOT_DEV"
+        break
     fi
 done
 
+# Try scanning all block devices if not found
 if [ -z "$ROOT_DEV" ]; then
-    echo "ERROR: No Btrfs root device found!"
+    echo "  Scanning all block devices for Btrfs..."
+    for dev in /dev/sd* /dev/nvme* /dev/mmcblk* /dev/vd* /dev/xvd*; do
+        [ -b "$dev" ] || continue
+        if scan_block_device "$dev"; then
+            echo "  Found Btrfs root: $ROOT_DEV"
+            break
+        fi
+    done
+fi
+
+if [ -z "$ROOT_DEV" ]; then
+    echo "[ERROR] No Btrfs root device found!"
+    echo "  Available block devices:"
+    ls -la /dev/[s,n,m,v,x]d* 2>/dev/null || echo "  (none)"
+    echo ""
     echo "Dropping to emergency shell..."
     exec /bin/sh
 fi
 
-# 挂载 Btrfs 系统子卷
-echo "[5/6] Mounting Btrfs @system subvolume..."
-mkdir -p /mnt
-mount -o subvol=@system,ro "$ROOT_DEV" /mnt
+# ============================================
+# [5/7] Mount @system subvolume
+# ============================================
+echo "[5/7] Mounting Btrfs @system subvolume..."
+mkdir -p "$ROOT_MOUNT"
 
-# 检查快照配置
-SNAPSHOT_ID=""
-if [ -f /mnt/boot/servecosys/snapshot.conf ]; then
-    SNAPSHOT_ID=$(grep "^SNAPSHOT=" /mnt/boot/servecosys/snapshot.conf | cut -d= -f2)
-    if [ -n "$SNAPSHOT_ID" ] && [ "$SNAPSHOT_ID" != "LATEST" ]; then
-        echo "Booting from snapshot: $SNAPSHOT_ID"
-        umount /mnt
-        mount -o subvol=@snapshots/$SNAPSHOT_ID,ro "$ROOT_DEV" /mnt
-    fi
+# First mount the Btrfs top-level to inspect subvolumes
+mount -t btrfs -o ro "$ROOT_DEV" /tmp 2>/dev/null || mkdir -p /tmp
+
+# Check if @system subvolume exists
+if btrfs subvolume list /tmp 2>/dev/null | grep -q "@system"; then
+    mount -o subvol=@system,ro "$ROOT_DEV" "$ROOT_MOUNT"
+    echo "  Mounted @system subvolume"
+else
+    # Fallback: mount the default subvolume
+    mount -t btrfs -o ro "$ROOT_DEV" "$ROOT_MOUNT"
+    echo "  @system not found, mounted default subvolume"
 fi
 
-# 切换到真实根
-echo "[6/6] Switching to real root..."
+umount /tmp 2>/dev/null || true
 
-# 创建必要目录
-mkdir -p /mnt/proc /mnt/sys /mnt/dev /mnt/run
+# ============================================
+# [6/7] Snapshot boot configuration
+# ============================================
+echo "[6/7] Checking snapshot configuration..."
+if [ -f "${ROOT_MOUNT}${SNAPSHOT_CONF}" ]; then
+    SNAPSHOT_ID=$(grep "^SNAPSHOT=" "${ROOT_MOUNT}${SNAPSHOT_CONF}" | cut -d= -f2)
+    if [ -n "$SNAPSHOT_ID" ]; then
+        if [ "$SNAPSHOT_ID" = "LATEST" ]; then
+            echo "  Boot config: LATEST snapshot"
+            LATEST_SNAP=$(ls -dt /mnt/root/.snapshots/*/ 2>/dev/null | head -1)
+            if [ -n "$LATEST_SNAP" ]; then
+                SNAPSHOT_ID=$(basename "$LATEST_SNAP")
+                umount "$ROOT_MOUNT"
+                mount -o subvol="@snapshots/$SNAPSHOT_ID",ro "$ROOT_DEV" "$ROOT_MOUNT"
+                echo "  Booted from latest snapshot: $SNAPSHOT_ID"
+            fi
+        elif [ -d "${ROOT_MOUNT}/.snapshots/${SNAPSHOT_ID}" ]; then
+            echo "  Boot config: snapshot $SNAPSHOT_ID"
+            umount "$ROOT_MOUNT"
+            mount -o subvol="@snapshots/$SNAPSHOT_ID",ro "$ROOT_DEV" "$ROOT_MOUNT"
+            echo "  Booted from snapshot: $SNAPSHOT_ID"
+        else
+            echo "  Snapshot '$SNAPSHOT_ID' not found, using @system"
+        fi
+    fi
+else
+    echo "  No snapshot config found, booting @system"
+fi
 
-# 移动挂载点
-mount --move /proc /mnt/proc
-mount --move /sys /mnt/sys
-mount --move /dev /mnt/dev
-mount --move /dev/pts /mnt/dev/pts
+# ============================================
+# [7/7] Switch to real root
+# ============================================
+echo "[7/7] Switching to real root..."
 
-# 执行 init
-exec switch_root /mnt /sbin/init
+# Prepare mount points in the new root
+mkdir -p "$ROOT_MOUNT/proc" "$ROOT_MOUNT/sys" "$ROOT_MOUNT/dev" "$ROOT_MOUNT/run"
 
-# 如果 switch_root 失败
-echo "ERROR: Failed to switch root!"
+# Move pseudo filesystems to new root
+mount --move /proc "$ROOT_MOUNT/proc" 2>/dev/null || true
+mount --move /sys "$ROOT_MOUNT/sys" 2>/dev/null || true
+mount --move /dev "$ROOT_MOUNT/dev" 2>/dev/null || true
+mount --move /run "$ROOT_MOUNT/run" 2>/dev/null || true
+
+echo "  Executing switch_root to $ROOT_MOUNT..."
+echo "============================================="
+
+exec switch_root "$ROOT_MOUNT" /sbin/init
+
+# Fallback: if switch_root fails
+echo "[ERROR] Failed to switch root! Dropping to emergency shell."
 exec /bin/sh

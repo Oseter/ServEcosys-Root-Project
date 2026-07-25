@@ -1,0 +1,6 @@
+# UID Frontend Services - Dependency List
+# Format: service_name: dep1 dep2 dep3
+display_server: log display ipc
+input_manager: log input ipc
+compositor: log ipc
+system_ui: log

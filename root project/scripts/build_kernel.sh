@@ -411,6 +411,11 @@ main() {
         keys)
             generate_keys
             ;;
+        image)
+            log_step "Building bootable disk image..."
+            "$PROJECT_ROOT/scripts/build_image.sh" "$@"
+            log_info "Disk image built"
+            ;;
         clean)
             log_step "Cleaning build artifacts..."
             rm -rf "$OUTPUT_DIR"
@@ -440,6 +445,7 @@ main() {
             echo "  uid         - Build UID frontend daemons (auto-builds deps)"
             echo "  selinux     - Build SELinux policy module"
             echo "  daemons     - Build deps + SED + UID"
+            echo "  image       - Generate bootable disk image (build/servecosys.img)"
             echo "  full        - Complete build (bootloader + kernel + modules + initramfs + sign + daemons)"
             echo "  clean       - Remove all build artifacts"
             echo ""

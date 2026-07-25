@@ -1,16 +1,18 @@
-name: Build ServEcosys Image
+name: Build ServEcosys ISO
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -21,11 +23,9 @@ jobs:
             bc kmod cpio openssl \
             bison flex libssl-dev libelf-dev \
             xorriso mtools dosfstools \
-            qemu-system-x86 ovmf \
-            busybox-static \
-            cpio
+            busybox-static cpio
 
-      - name: Download Linux kernel source
+      - name: Download Linux 6.6 LTS
         run: |
           cd "root project"
           mkdir -p build
@@ -48,7 +48,7 @@ jobs:
           make -j$(nproc) bzImage
           cp arch/x86/boot/bzImage ../../build/vmlinuz
 
-      - name: Build kernel modules
+      - name: Build modules
         run: |
           cd "root project/kernel/linux-src"
           make -j$(nproc) modules
@@ -57,63 +57,44 @@ jobs:
       - name: Generate initramfs
         run: |
           cd "root project"
-          INITRAMFS_SRC=scripts/initramfs
-
-          # Copy busybox
-          mkdir -p $INITRAMFS_SRC/bin
-          cp $(which busybox) $INITRAMFS_SRC/bin/
-          cd $INITRAMFS_SRC/bin
+          mkdir -p scripts/initramfs/bin
+          cp $(which busybox) scripts/initramfs/bin/
+          cd scripts/initramfs/bin
           for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep; do
             ln -sf busybox $cmd 2>/dev/null || true
           done
-
-          # Copy init script
           cd "$GITHUB_WORKSPACE/root project"
-          chmod +x $INITRAMFS_SRC/init
-
-          # Pack
-          cd $INITRAMFS_SRC
+          chmod +x scripts/initramfs/init
+          cd scripts/initramfs
           find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
 
-      - name: Sign kernel
+      - name: Generate keys & sign
         run: |
           cd "root project"
           mkdir -p scripts/keys
-
-          # Generate keys
           openssl genrsa -out scripts/keys/maintainer.key 4096 2>/dev/null
           openssl req -new -key scripts/keys/maintainer.key \
             -out scripts/keys/maintainer.csr \
-            -subj "/CN=ServEcosys/CN=CI Build" 2>/dev/null
+            -subj "/CN=ServEcosys" 2>/dev/null
           openssl x509 -req -days 365 -in scripts/keys/maintainer.csr \
             -signkey scripts/keys/maintainer.key \
             -out scripts/keys/maintainer.crt 2>/dev/null
-
-          # Sign
           openssl dgst -sha256 -sign scripts/keys/maintainer.key \
             -out build/vmlinuz.sig build/vmlinuz
 
-      - name: Build backend deps (.smle)
-        run: |
-          cd "root project/backend/deps"
-          make all
+      - name: Build backend deps
+        run: make -C "root project/backend/deps" all
 
       - name: Build SED daemons (.smle)
-        run: |
-          cd "root project/backend/sub_kernel"
-          make all
+        run: make -C "root project/backend/sub_kernel" all
 
-      - name: Build frontend deps (.ssle)
-        run: |
-          cd "root project/frontend/deps"
-          make all
+      - name: Build frontend deps
+        run: make -C "root project/frontend/deps" all
 
       - name: Build UID daemons (.ssle)
-        run: |
-          cd "root project/frontend/ui"
-          make all
+        run: make -C "root project/frontend/ui" all
 
-      - name: Generate ISO image
+      - name: Build ISO
         run: |
           cd "root project"
           chmod +x scripts/build_image.sh
@@ -122,23 +103,29 @@ jobs:
             -i build/initramfs.cpio.gz \
             -b build/bootloader.efi
 
-      - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: servecosys-iso
-          path: root project/build/servecosys.iso
-          compression-level: 0
-          retention-days: 7
+      - name: Get version
+        id: version
+        run: echo "tag=v0.1.0-$(date +%Y%m%d)" >> $GITHUB_OUTPUT
 
-      - name: Upload all build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: build-artifacts
-          path: |
-            root project/build/vmlinuz
-            root project/build/initramfs.cpio.gz
-            root project/build/bootloader.efi
-            root project/build/servecosys.iso
-            root project/build/sed/*.smle
-            root project/build/uid/*.ssle
-          retention-days: 7
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "ServEcosys ${{ steps.version.outputs.tag }}"
+          body: |
+            ## ServEcosys Root Project 自动构建 ISO
+            
+            ### 包含
+            - Linux 6.6 LTS 内核
+            - UEFI 引导加载器
+            - initramfs (BusyBox)
+            - SED 后端守护进程 (.smle)
+            - UID 前端守护进程 (.ssle)
+            - SELinux 策略
+            
+            ### 测试
+            ```
+            qemu-system-x86_64 -cdrom servecosys.iso -m 2G -bios /usr/share/ovmf/OVMF.fd
+            ```
+          files: root project/build/servecosys.iso
+          make_latest: true

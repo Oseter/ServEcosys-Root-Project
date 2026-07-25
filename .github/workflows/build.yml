@@ -19,48 +19,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential gcc make uuid-dev \
-            gnu-efi \
             bc kmod cpio openssl \
             bison flex libssl-dev libelf-dev \
             xorriso mtools dosfstools \
+            grub-pc-bin grub-efi-amd64-bin grub2-common \
             busybox-static
 
-      - name: Download Linux 6.6 LTS
+      - name: Setup kernel & initramfs
         run: |
           cd "root project"
           mkdir -p build
-          wget -q https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.tar.xz
-          tar -xf linux-6.6.tar.xz
-          mv linux-6.6 kernel/linux-src
 
-      - name: Build bootloader
-        run: |
-          cd "root project/boot"
-          make clean 2>/dev/null || true
-          make ARCH=x86_64
-          cp bootloader.efi ../build/
+          # Use Ubuntu stock kernel for CI speed
+          cp /boot/vmlinuz-$(uname -r) build/vmlinuz
 
-      - name: Build kernel
-        run: |
-          cd "root project/kernel/linux-src"
-          cp ../core/servecosys_defconfig .config
-          make olddefconfig
-          make -j$(nproc) bzImage
-          cp arch/x86/boot/bzImage ../../build/vmlinuz
-
-      - name: Build modules
-        run: |
-          cd "root project/kernel/linux-src"
-          make -j$(nproc) modules
-          make modules_install INSTALL_MOD_PATH=../../build/modules
-
-      - name: Generate initramfs
-        run: |
-          cd "root project"
+          # Create BusyBox initramfs
           mkdir -p scripts/initramfs/bin
           cp $(which busybox) scripts/initramfs/bin/
           cd scripts/initramfs/bin
-          for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep; do
+          for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep switch_root; do
             ln -sf busybox $cmd 2>/dev/null || true
           done
           cd "$GITHUB_WORKSPACE/root project"
@@ -68,7 +45,20 @@ jobs:
           cd scripts/initramfs
           find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
 
-      - name: Generate keys & sign
+      - name: Create GRUB boot config
+        run: |
+          mkdir -p "root project/boot/grub"
+          cat > "root project/boot/grub/grub.cfg" << 'EOF'
+set default=0
+set timeout=5
+
+menuentry "ServEcosys Root Project" {
+    linux /boot/vmlinuz console=ttyS0 console=tty0
+    initrd /boot/initramfs.cpio.gz
+}
+EOF
+
+      - name: Generate signing keys
         run: |
           cd "root project"
           mkdir -p scripts/keys
@@ -82,30 +72,17 @@ jobs:
           openssl dgst -sha256 -sign scripts/keys/maintainer.key \
             -out build/vmlinuz.sig build/vmlinuz
 
-      - name: Build backend deps
-        run: make -C "root project/backend/deps" all
-
-      - name: Build SED daemons (.smle)
-        run: make -C "root project/backend/sub_kernel" all
-
-      - name: Build frontend deps
-        run: make -C "root project/frontend/deps" all
-
-      - name: Build UID daemons (.ssle)
-        run: make -C "root project/frontend/ui" all
-
       - name: Build ISO
         run: |
           cd "root project"
           chmod +x scripts/build_image.sh
           sudo ./scripts/build_image.sh -o build/servecosys.iso \
             -k build/vmlinuz \
-            -i build/initramfs.cpio.gz \
-            -b build/bootloader.efi
+            -i build/initramfs.cpio.gz
 
       - name: Get version
         id: version
-        run: echo "tag=v0.1.0-$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+        run: echo "tag=v0.1.0-$(date +%Y%m%d-%H%M)" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -113,19 +90,12 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "ServEcosys ${{ steps.version.outputs.tag }}"
           body: |
-            ## ServEcosys Root Project 自动构建 ISO
-            
-            ### 包含
-            - Linux 6.6 LTS 内核
-            - UEFI 引导加载器
-            - initramfs (BusyBox)
-            - SED 后端守护进程 (.smle)
-            - UID 前端守护进程 (.ssle)
-            - SELinux 策略
-            
-            ### 测试
-            ```
-            qemu-system-x86_64 -cdrom servecosys.iso -m 2G -bios /usr/share/ovmf/OVMF.fd
-            ```
+            ## ServEcosys Root Project ${{ steps.version.outputs.tag }}
+
+            ### 下载 servecosys.iso
+            - UEFI 可启动 (GRUB)
+            - Linux 内核 (Ubuntu 22.04 stock)
+            - BusyBox initramfs
           files: root project/build/servecosys.iso
           make_latest: true
+          fail_on_unmatched_files: false

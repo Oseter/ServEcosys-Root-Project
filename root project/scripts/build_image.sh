@@ -91,6 +91,12 @@ prepare_iso_dir() {
         cp "$BUILD_DIR/selinux/"* "$ISODIR/system/backend/etc/selinux/" 2>/dev/null || true
     fi
 
+    # GRUB 配置
+    if [ -d "$PROJECT_ROOT/boot/grub" ]; then
+        cp -r "$PROJECT_ROOT/boot/grub" "$ISODIR/boot/"
+        log_info "  GRUB config: boot/grub/grub.cfg"
+    fi
+
     # 版本信息
     {
         echo "ServEcosys Root Project"
@@ -100,7 +106,6 @@ prepare_iso_dir() {
         echo "Arch: x86_64"
     } > "$ISODIR/system/build.info"
 
-    # GRUB 配置（如果 grub-mkrescue 可用则用，否则用内置 EFI）
     if command -v grub-mkrescue &> /dev/null; then
         log_info "  Using GRUB for UEFI boot"
     fi
@@ -115,19 +120,22 @@ create_efi_boot_image() {
     dd if=/dev/zero of="$EFI_IMG" bs=1k count=4096 2>/dev/null
     mkfs.fat -F 12 -n "SERVECOSYS" "$EFI_IMG" > /dev/null
 
+    if command -v grub-mkrescue &> /dev/null; then
+        log_info "  Skipping EFI image - using grub-mkrescue"
+        return
+    fi
+
     # 使用 mtools 操作 FAT 镜像
-    MTOOLS_SRC=""
     if [ -f "$BOOTLOADER" ]; then
+        mmd -i "$EFI_IMG" "::EFI/BOOT" 2>/dev/null || true
         mcopy -i "$EFI_IMG" "$BOOTLOADER" "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null
         log_info "  Bootloader: $BOOTLOADER -> EFI/BOOT/BOOTX64.EFI"
     else
-        log_warn "  Bootloader not found, creating minimal boot entry"
-        # 创建启动脚本
-        echo "vmlinuz initrd=initramfs.cpio.gz console=ttyS0" > /tmp/servecosys-cmdline
+        log_warn "  Bootloader not found, ISO will use GRUB if available"
+        log_warn "  Creating placeholder EFI image"
+        mmd -i "$EFI_IMG" "::EFI/BOOT" 2>/dev/null || true
+        echo "ServEcosys - install GRUB for UEFI boot" | mcopy -i "$EFI_IMG" - "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
     fi
-
-    mmd -i "$EFI_IMG" "::EFI/BOOT" 2>/dev/null || true
-    mcopy -i "$EFI_IMG" /dev/null "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
 
     log_info "  EFI boot image created: $EFI_IMG"
 }

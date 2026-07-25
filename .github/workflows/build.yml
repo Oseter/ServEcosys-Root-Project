@@ -4,16 +4,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      image_size:
-        description: 'Disk image size'
-        required: false
-        default: '4G'
-        type: choice
-        options:
-          - 2G
-          - 4G
-          - 8G
 
 jobs:
   build:
@@ -30,7 +20,7 @@ jobs:
             gnu-efi libgnuefi-dev \
             bc kmod cpio openssl \
             bison flex libssl-dev libelf-dev \
-            parted dosfstools btrfs-progs \
+            xorriso mtools dosfstools \
             qemu-system-x86 ovmf \
             busybox-static \
             cpio
@@ -123,17 +113,20 @@ jobs:
           cd "root project/frontend/ui"
           make all
 
-      - name: Generate disk image
+      - name: Generate ISO image
         run: |
           cd "root project"
           chmod +x scripts/build_image.sh
-          sudo ./scripts/build_image.sh -s 4G -o build/servecosys.img
+          sudo ./scripts/build_image.sh -o build/servecosys.iso \
+            -k build/vmlinuz \
+            -i build/initramfs.cpio.gz \
+            -b build/bootloader.efi
 
-      - name: Upload image artifact
+      - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: servecosys-image
-          path: root project/build/servecosys.img
+          name: servecosys-iso
+          path: root project/build/servecosys.iso
           compression-level: 0
           retention-days: 7
 
@@ -145,6 +138,7 @@ jobs:
             root project/build/vmlinuz
             root project/build/initramfs.cpio.gz
             root project/build/bootloader.efi
+            root project/build/servecosys.iso
             root project/build/sed/*.smle
             root project/build/uid/*.ssle
           retention-days: 7

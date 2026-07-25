@@ -1,17 +1,16 @@
 #!/bin/bash
 #
-# ServEcosys Bootable Disk Image Builder
+# ServEcosys Bootable ISO Image Builder
 #
-# 生成可用于 QEMU/物理机的系统镜像文件
-# 输出: build/servecosys.img
+# 生成标准 ISO9660 + El Torito UEFI 可启动镜像
+# 输出: build/servecosys.iso
 #
+# iOS 设备可直接从 GitHub Actions 下载 .iso 文件
 # 用法:
-#   ./build_image.sh                   生成默认镜像 (4G)
-#   ./build_image.sh -s 8G            指定大小 (8G)
-#   ./build_image.sh -o myos.img      指定输出文件
+#   ./build_image.sh                   生成默认 ISO
+#   ./build_image.sh -o myos.iso       指定输出
 #   ./build_image.sh -k vmlinuz       指定内核
 #   ./build_image.sh -i initramfs.gz  指定 initramfs
-#   ./build_image.sh -b bootloader.efi 指定引导
 #
 
 set -e
@@ -19,8 +18,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build"
-OUTPUT_IMG="${OUTPUT_IMG:-$BUILD_DIR/servecosys.img}"
-IMAGE_SIZE="${IMAGE_SIZE:-4G}"
+OUTPUT_ISO="${OUTPUT_ISO:-$BUILD_DIR/servecosys.iso}"
 
 KERNEL="${KERNEL:-$BUILD_DIR/vmlinuz}"
 INITRAMFS="${INITRAMFS:-$BUILD_DIR/initramfs.cpio.gz}"
@@ -32,12 +30,11 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_step()  { echo -e "${BLUE}[STEP]${NC} $1"; }
 
-MOUNT_DIR="/tmp/servecosys-mount"
-ESP_MOUNT="$MOUNT_DIR/esp"
-ROOT_MOUNT="$MOUNT_DIR/root"
+ISODIR="/tmp/servecosys-isodir"
+EFI_IMG="/tmp/servecosys-efi.img"
 
 check_deps() {
-    local deps=("dd" "parted" "mkfs.fat" "mkfs.btrfs" "losetup" "mount" "umount" "btrfs")
+    local deps=("xorriso" "dd" "mkfs.fat" "mmd" "mcopy")
     local missing=()
 
     for dep in "${deps[@]}"; do
@@ -48,237 +45,171 @@ check_deps() {
 
     if [ ${#missing[@]} -ne 0 ]; then
         log_error "Missing dependencies: ${missing[*]}"
-        log_info "Install: sudo apt install parted dosfstools btrfs-progs"
+        log_info "Install: sudo apt install xorriso mtools dosfstools"
         exit 1
     fi
 }
 
-create_disk_image() {
-    log_step "Creating disk image: $OUTPUT_IMG ($IMAGE_SIZE)"
+prepare_iso_dir() {
+    log_step "Preparing ISO directory"
 
-    mkdir -p "$(dirname "$OUTPUT_IMG")"
-    dd if=/dev/zero of="$OUTPUT_IMG" bs=1 count=0 seek="$IMAGE_SIZE" 2>/dev/null
-    log_info "  Image created: $OUTPUT_IMG ($(ls -lh "$OUTPUT_IMG" | awk '{print $5}'))"
-}
+    rm -rf "$ISODIR"
+    mkdir -p "$ISODIR"/{boot,EFI/BOOT,system/backend/bin,system/frontend/bin,system/frontend/apps,system/backend/etc/selinux}
 
-partition_disk() {
-    log_step "Partitioning disk (GPT)"
-
-    parted -s "$OUTPUT_IMG" mklabel gpt
-
-    # 分区1: EFI System Partition (512MB)
-    parted -s "$OUTPUT_IMG" mkpart primary fat32 1MiB 513MiB
-    parted -s "$OUTPUT_IMG" set 1 esp on
-
-    # 分区2: Btrfs 根分区 (剩余空间)
-    parted -s "$OUTPUT_IMG" mkpart primary btrfs 513MiB 100%
-
-    log_info "  Partition table:"
-    parted -s "$OUTPUT_IMG" print
-}
-
-setup_loopback() {
-    log_step "Setting up loopback devices"
-
-    LOOP_DEV=$(losetup -f)
-    losetup -P "$LOOP_DEV" "$OUTPUT_IMG"
-
-    ESP_PART="${LOOP_DEV}p1"
-    ROOT_PART="${LOOP_DEV}p2"
-
-    log_info "  Loop device: $LOOP_DEV"
-    log_info "  ESP:         $ESP_PART"
-    log_info "  Root:        $ROOT_PART"
-
-    sleep 1
-
-    # 等待分区设备出现
-    for i in $(seq 1 10); do
-        if [ -b "$ESP_PART" ] && [ -b "$ROOT_PART" ]; then break; fi
-        sleep 1
-    done
-}
-
-format_partitions() {
-    log_step "Formatting partitions"
-
-    log_info "  Formatting ESP (FAT32)..."
-    mkfs.fat -F 32 -n "SERVECOSYS-ESP" "$ESP_PART" > /dev/null
-
-    log_info "  Formatting root (Btrfs)..."
-    mkfs.btrfs -f -L "SERVECOSYS-ROOT" "$ROOT_PART" > /dev/null
-
-    log_info "  Partitions formatted"
-}
-
-create_subvolumes() {
-    log_step "Creating Btrfs subvolumes"
-
-    mkdir -p "$ROOT_MOUNT"
-    mount -t btrfs "$ROOT_PART" "$ROOT_MOUNT"
-
-    btrfs subvolume create "$ROOT_MOUNT/@system" > /dev/null
-    btrfs subvolume create "$ROOT_MOUNT/@data" > /dev/null
-    btrfs subvolume create "$ROOT_MOUNT/@snapshots" > /dev/null
-
-    umount "$ROOT_MOUNT"
-    log_info "  Subvolumes: @system, @data, @snapshots"
-}
-
-install_bootloader() {
-    log_step "Installing UEFI bootloader"
-
-    mkdir -p "$ESP_MOUNT"
-    mount "$ESP_PART" "$ESP_MOUNT"
-
-    mkdir -p "$ESP_MOUNT/EFI/BOOT"
-
-    if [ -f "$BOOTLOADER" ]; then
-        cp "$BOOTLOADER" "$ESP_MOUNT/EFI/BOOT/BOOTX64.EFI"
-        log_info "  Bootloader: $BOOTLOADER -> /EFI/BOOT/BOOTX64.EFI"
-    else
-        log_warn "  Bootloader not found at $BOOTLOADER"
-        log_warn "  Creating fallback BOOTX64.EFI..."
-        cat > "$ESP_MOUNT/EFI/BOOT/BOOTX64.EFI" << 'EFI_EOF'
-#!/bin/sh
-echo "ServEcosys Fallback Bootloader"
-echo "Place bootloader.efi at EFI/BOOT/BOOTX64.EFI"
-EFI_EOF
-    fi
-
-    # grubx64 fallback
-    if command -v grub-mkimage &> /dev/null; then
-        log_info "  GRUB detected, creating grubx64.efi..."
-    fi
-
-    umount "$ESP_MOUNT"
-    log_info "  Bootloader installed"
-}
-
-install_system_files() {
-    log_step "Installing system files"
-
-    mount -t btrfs -o subvol=@system "$ROOT_PART" "$ROOT_MOUNT"
-
-    # 创建系统目录结构
-    mkdir -p "$ROOT_MOUNT"/{boot/servecosys,dev,etc,proc,sys,run}
-    mkdir -p "$ROOT_MOUNT/system/backend/bin"
-    mkdir -p "$ROOT_MOUNT/system/backend/data"
-    mkdir -p "$ROOT_MOUNT/system/backend/etc/selinux"
-    mkdir -p "$ROOT_MOUNT/system/frontend/bin"
-    mkdir -p "$ROOT_MOUNT/system/frontend/apps/system"
-    mkdir -p "$ROOT_MOUNT/system/frontend/apps/third_party"
-    mkdir -p "$ROOT_MOUNT/system/app-data"
-    mkdir -p "$ROOT_MOUNT/var/log/sed"
-    mkdir -p "$ROOT_MOUNT/var/run"
-    mkdir -p "$ROOT_MOUNT/.snapshots"
-    mkdir -p "$ROOT_MOUNT/sbin"
-    mkdir -p "$ROOT_MOUNT/lib/modules"
-
-    # 拷贝内核与 initramfs
+    # 拷贝内核
     if [ -f "$KERNEL" ]; then
-        mkdir -p "$ROOT_MOUNT/boot"
-        cp "$KERNEL" "$ROOT_MOUNT/boot/vmlinuz"
-        log_info "  Kernel: $KERNEL -> /boot/vmlinuz"
+        cp "$KERNEL" "$ISODIR/boot/vmlinuz"
+        log_info "  Kernel: $KERNEL"
     else
-        log_warn "  Kernel not found at $KERNEL"
+        log_error "Kernel not found: $KERNEL"
+        exit 1
     fi
 
+    # 拷贝 initramfs
     if [ -f "$INITRAMFS" ]; then
-        cp "$INITRAMFS" "$ROOT_MOUNT/boot/initramfs.cpio.gz"
-        log_info "  Initramfs: $INITRAMFS -> /boot/initramfs.cpio.gz"
+        cp "$INITRAMFS" "$ISODIR/boot/initramfs.cpio.gz"
+        log_info "  Initramfs: $INITRAMFS"
     else
-        log_warn "  Initramfs not found at $INITRAMFS"
+        log_error "Initramfs not found: $INITRAMFS"
+        exit 1
     fi
 
-    # 安装 SED 后端 .smle 服务
+    # 拷贝 SED 后端 .smle 服务
     if [ -d "$BUILD_DIR/sed" ]; then
-        cp -r "$BUILD_DIR/sed/"*.smle "$ROOT_MOUNT/system/backend/bin/" 2>/dev/null || true
-        log_info "  SED daemons (.smle) installed"
+        cp "$BUILD_DIR/sed/"*.smle "$ISODIR/system/backend/bin/" 2>/dev/null || true
+        log_info "  SED daemons (.smle)"
     fi
 
-    # 安装 UID 前端 .ssle 服务
+    # 拷贝 UID 前端 .ssle 服务
     if [ -d "$BUILD_DIR/uid" ]; then
-        cp -r "$BUILD_DIR/uid/"*.ssle "$ROOT_MOUNT/system/frontend/bin/" 2>/dev/null || true
-        log_info "  UID daemons (.ssle) installed"
+        cp "$BUILD_DIR/uid/"*.ssle "$ISODIR/system/frontend/bin/" 2>/dev/null || true
+        log_info "  UID daemons (.ssle)"
     fi
 
-    # 安装 SELinux 策略
+    # 拷贝 SELinux 策略
     if [ -d "$BUILD_DIR/selinux" ]; then
-        cp -r "$BUILD_DIR/selinux/"* "$ROOT_MOUNT/system/backend/etc/selinux/" 2>/dev/null || true
-        log_info "  SELinux policy installed"
+        cp "$BUILD_DIR/selinux/"* "$ISODIR/system/backend/etc/selinux/" 2>/dev/null || true
     fi
 
-    # 安装 Btrfs 快照配置
-    mkdir -p "$ROOT_MOUNT/boot/servecosys"
-    echo "SNAPSHOT=LATEST" > "$ROOT_MOUNT/boot/servecosys/snapshot.conf"
-
-    umount "$ROOT_MOUNT"
-    log_info "  System files installed"
-}
-
-create_version_file() {
-    log_step "Creating version information"
-
-    mount -t btrfs -o subvol=@system "$ROOT_PART" "$ROOT_MOUNT"
-
+    # 版本信息
     {
         echo "ServEcosys Root Project"
         echo "Version: 0.1.0 'Genesis'"
         echo "Build: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Kernel: $(basename "${KERNEL:-unknown}")"
         echo "Arch: x86_64"
-    } > "$ROOT_MOUNT/system/build.info"
+    } > "$ISODIR/system/build.info"
 
-    umount "$ROOT_MOUNT"
+    # GRUB 配置（如果 grub-mkrescue 可用则用，否则用内置 EFI）
+    if command -v grub-mkrescue &> /dev/null; then
+        log_info "  Using GRUB for UEFI boot"
+    fi
+
+    log_info "  ISO directory prepared"
+}
+
+create_efi_boot_image() {
+    log_step "Creating EFI boot image"
+
+    rm -f "$EFI_IMG"
+    dd if=/dev/zero of="$EFI_IMG" bs=1k count=4096 2>/dev/null
+    mkfs.fat -F 12 -n "SERVECOSYS" "$EFI_IMG" > /dev/null
+
+    # 使用 mtools 操作 FAT 镜像
+    MTOOLS_SRC=""
+    if [ -f "$BOOTLOADER" ]; then
+        mcopy -i "$EFI_IMG" "$BOOTLOADER" "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null
+        log_info "  Bootloader: $BOOTLOADER -> EFI/BOOT/BOOTX64.EFI"
+    else
+        log_warn "  Bootloader not found, creating minimal boot entry"
+        # 创建启动脚本
+        echo "vmlinuz initrd=initramfs.cpio.gz console=ttyS0" > /tmp/servecosys-cmdline
+    fi
+
+    mmd -i "$EFI_IMG" "::EFI/BOOT" 2>/dev/null || true
+    mcopy -i "$EFI_IMG" /dev/null "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
+
+    log_info "  EFI boot image created: $EFI_IMG"
+}
+
+build_iso() {
+    log_step "Building ISO image: $OUTPUT_ISO"
+
+    mkdir -p "$(dirname "$OUTPUT_ISO")"
+
+    if command -v grub-mkrescue &> /dev/null; then
+        # 使用 GRUB 创建完整可启动 ISO
+        log_info "  Using grub-mkrescue..."
+        grub-mkrescue -o "$OUTPUT_ISO" "$ISODIR" 2>/dev/null
+    else
+        # 使用 xorriso 手动创建 UEFI 可启动 ISO
+        log_info "  Using xorriso..."
+        xorriso -as mkisofs \
+            -iso-level 3 \
+            -full-iso9660-filenames \
+            -volid "SERVECOSYS" \
+            -appid "ServEcosys Root Project" \
+            -publisher "ServEcosys" \
+            -eltorito-boot boot/efi.img \
+            -no-emul-boot \
+            -boot-load-size 4 \
+            -boot-info-table \
+            -eltorito-alt-boot \
+            -e boot/efi.img \
+            -no-emul-boot \
+            -isohybrid-gpt-basdat \
+            -isohybrid-apm-hfsplus \
+            -o "$OUTPUT_ISO" \
+            "$ISODIR" 2>/dev/null
+    fi
+
+    log_info "  ISO built: $OUTPUT_ISO"
+}
+
+verify_iso() {
+    log_step "Verifying ISO"
+
+    if [ ! -f "$OUTPUT_ISO" ]; then
+        log_error "ISO not found: $OUTPUT_ISO"
+        exit 1
+    fi
+
+    local size
+    size=$(stat -c%s "$OUTPUT_ISO" 2>/dev/null || stat -f%z "$OUTPUT_ISO" 2>/dev/null)
+    log_info "  Size: $(numfmt --to=iec $size 2>/dev/null || echo "$size bytes")"
+
+    file "$OUTPUT_ISO"
+
+    echo ""
+    log_info "============================================="
+    log_info " QEMU 测试命令:"
+    echo ""
+    echo "    qemu-system-x86_64 \\"
+    echo "      -cdrom $OUTPUT_ISO \\"
+    echo "      -m 2G \\"
+    echo "      -smp 2 \\"
+    echo "      -bios /usr/share/ovmf/OVMF.fd \\"
+    echo "      -vga virtio -display gtk"
+    echo ""
+    echo "    命令行模式:"
+    echo "    qemu-system-x86_64 \\"
+    echo "      -cdrom $OUTPUT_ISO \\"
+    echo "      -m 2G \\"
+    echo "      -smp 2 \\"
+    echo "      -bios /usr/share/ovmf/OVMF.fd \\"
+    echo "      -nographic \\"
+    echo "      -kernel /boot/vmlinuz \\"
+    echo "      -initrd /boot/initramfs.cpio.gz \\"
+    echo "      -append \"console=ttyS0\""
+    echo ""
+    log_info " iOS 下载后可用 UTM 或 aQEMU 加载此 ISO"
+    log_info "============================================="
 }
 
 cleanup() {
     log_step "Cleaning up"
-
-    mount | grep "$MOUNT_DIR" | awk '{print $1}' | while read -r dev; do
-        umount "$dev" 2>/dev/null || true
-    done
-
-    if [ -n "$LOOP_DEV" ]; then
-        losetup -d "$LOOP_DEV" 2>/dev/null || true
-    fi
-
-    rm -rf "$MOUNT_DIR"
+    rm -rf "$ISODIR" "$EFI_IMG" /tmp/servecosys-cmdline
     log_info "  Cleanup complete"
-}
-
-verify_image() {
-    log_step "Verifying image"
-
-    if [ ! -f "$OUTPUT_IMG" ]; then
-        log_error "Image not found: $OUTPUT_IMG"
-        exit 1
-    fi
-
-    local img_size
-    img_size=$(stat -c%s "$OUTPUT_IMG" 2>/dev/null || stat -f%z "$OUTPUT_IMG" 2>/dev/null)
-    log_info "  Image size: $(numfmt --to=iec $img_size 2>/dev/null || echo "$img_size bytes")"
-
-    log_info "  Partition table:"
-    parted -s "$OUTPUT_IMG" print 2>/dev/null || fdisk -l "$OUTPUT_IMG" 2>/dev/null || true
-
-    log_info "  To test with QEMU:"
-    echo ""
-    echo "    qemu-system-x86_64 \\"
-    echo "      -drive file=$OUTPUT_IMG,format=raw,if=virtio \\"
-    echo "      -m 2G \\"
-    echo "      -smp 2 \\"
-    echo "      -bios /usr/share/ovmf/OVMF.fd \\"
-    echo "      -nographic"
-    echo ""
-    echo "    qemu-system-x86_64 \\"
-    echo "      -drive file=$OUTPUT_IMG,format=raw,if=virtio \\"
-    echo "      -m 2G \\"
-    echo "      -smp 2 \\"
-    echo "      -vga virtio \\"
-    echo "      -display gtk"
-    echo ""
 }
 
 # ============================================
@@ -286,19 +217,18 @@ verify_image() {
 # ============================================
 
 main() {
-    while getopts "s:o:k:i:b:h" opt; do
+    while getopts "o:k:i:b:h" opt; do
         case $opt in
-            s) IMAGE_SIZE="$OPTARG" ;;
-            o) OUTPUT_IMG="$OPTARG" ;;
+            o) OUTPUT_ISO="$OPTARG" ;;
             k) KERNEL="$OPTARG" ;;
             i) INITRAMFS="$OPTARG" ;;
             b) BOOTLOADER="$OPTARG" ;;
             h)
-                echo "ServEcosys Image Builder v0.1.0"
+                echo "ServEcosys ISO Builder v0.1.0"
+                echo "Generate bootable ISO with UEFI support"
                 echo ""
                 echo "Usage: $0 [options]"
-                echo "  -s <size>     Image size (default: 4G)"
-                echo "  -o <file>     Output image path"
+                echo "  -o <file>     Output ISO path (default: build/servecosys.iso)"
                 echo "  -k <file>     Kernel image path"
                 echo "  -i <file>     Initramfs path"
                 echo "  -b <file>     Bootloader EFI path"
@@ -310,34 +240,26 @@ main() {
     done
 
     echo "============================================="
-    echo " ServEcosys Bootable Image Builder"
+    echo " ServEcosys ISO Image Builder"
     echo "============================================="
     echo ""
-    log_info "Output:  $OUTPUT_IMG"
-    log_info "Size:    $IMAGE_SIZE"
+    log_info "Output:  $OUTPUT_ISO"
     log_info "Kernel:  ${KERNEL:-auto}"
     log_info "Initrd:  ${INITRAMFS:-auto}"
     log_info "Boot:    ${BOOTLOADER:-auto}"
     echo ""
 
     check_deps
-
     trap cleanup EXIT INT TERM
 
-    create_disk_image
-    partition_disk
-    setup_loopback
-    format_partitions
-    create_subvolumes
-    install_bootloader
-    install_system_files
-    create_version_file
+    prepare_iso_dir
+    create_efi_boot_image
+    build_iso
+    verify_iso
 
     echo ""
-    log_info "Image build complete!"
+    log_info "Done! ISO ready: $OUTPUT_ISO"
     echo "============================================="
-    echo ""
-    verify_image
 }
 
 main "$@"

@@ -15,30 +15,42 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
 
-      - name: Copy kernel
+      - name: Debug boot
         run: |
-          set +e
-          mkdir -p "root project/build"
-          KERNEL=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1)
-          if [ -z "$KERNEL" ]; then
-            echo "No kernel in /boot, installing..."
-            sudo apt-get install -y -qq linux-image-generic
-            KERNEL=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1)
-          fi
-          echo "KERNEL=$KERNEL"
-          cp "$KERNEL" "root project/build/vmlinuz"
+          echo "=== /boot/ ==="
+          ls -la /boot/ || echo "no boot"
+          echo "=== uname ==="
+          uname -r
+          echo "=== find ==="
+          find /boot -type f 2>/dev/null || echo "no files"
+          echo "=== GITHUB_WORKSPACE ==="
+          echo "$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/" || echo "no workspace"
 
-      - name: Copy busybox
+      - name: Prepare kernel
+        run: |
+          mkdir -p "root project/build"
+          INSTALLED=$(ls /boot/vmlinuz-* 2>/dev/null | head -1)
+          if [ -n "$INSTALLED" ]; then
+            cp "$INSTALLED" "root project/build/vmlinuz"
+            echo "Kernel: $INSTALLED"
+          else
+            echo "No kernel found, installing linux-image-generic..."
+            sudo apt-get install -y -qq linux-image-generic
+            KFILE=$(ls /boot/vmlinuz-* | head -1)
+            cp "$KFILE" "root project/build/vmlinuz"
+            echo "Kernel: $KFILE"
+          fi
+          ls -la "root project/build/vmlinuz"
+
+      - name: Prepare initramfs
         run: |
           mkdir -p "root project/scripts/initramfs/bin"
-          cp /bin/busybox "root project/scripts/initramfs/bin/" 2>/dev/null || \
-          cp /usr/bin/busybox "root project/scripts/initramfs/bin/" 2>/dev/null || \
-          (sudo apt-get install -y -qq busybox-static && cp /bin/busybox "root project/scripts/initramfs/bin/")
-
-      - name: Make initramfs
-        run: |
+          cp /bin/busybox "root project/scripts/initramfs/bin/"
+          chmod +x "root project/scripts/initramfs/init"
           cd "root project/scripts/initramfs"
-          find . | cpio -H newc -o | gzip > ../../build/initramfs.cpio.gz
+          find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
+          ls -la "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
 
       - name: Build ISO
         run: |

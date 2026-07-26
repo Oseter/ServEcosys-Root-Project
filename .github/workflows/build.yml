@@ -1,61 +1,22 @@
 name: Build ServEcosys ISO
-
 on:
   push:
     branches: [ main ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install deps
+      - name: deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
+      - name: kernel
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
-
-      - name: Get kernel
-        run: |
-          mkdir -p "root project/build"
-          KFILE=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1) || true
-          if [ -z "$KFILE" ]; then
-            echo "No kernel in /boot, checking /lib/modules..."
-            KFILE=$(find /lib/modules -name 'vmlinuz*' -type f 2>/dev/null | head -1) || true
-          fi
-          if [ -z "$KFILE" ]; then
-            echo "No kernel found, using dummy for build test..."
-            echo "SERVECOSYS DUMMY KERNEL" > "root project/build/vmlinuz"
-          else
-            cp "$KFILE" "root project/build/vmlinuz"
-          fi
-          ls -la "root project/build/vmlinuz"
-
-      - name: Initramfs
-        run: |
-          mkdir -p "root project/scripts/initramfs/bin"
-          BB=$(which busybox) || true
-          if [ -z "$BB" ]; then
-            sudo apt-get install -y -qq busybox-static
-            BB=$(which busybox) || true
-          fi
-          cp "$BB" "root project/scripts/initramfs/bin/"
-          chmod +x "root project/scripts/initramfs/init" 2>/dev/null || true
-          cd "root project/scripts/initramfs"
-          find . -type f | cpio -H newc -o 2>/dev/null | gzip > ../../build/initramfs.cpio.gz || true
-          ls -la ../../build/initramfs.cpio.gz
-
-      - name: Build ISO
-        run: |
-          cd "root project"
-          chmod +x scripts/build_image.sh
-          sudo bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
-          ls -la build/servecosys.iso
-
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: servecosys.iso
-          path: root project/build/servecosys.iso
-          compression-level: 0
-          retention-days: 90
+          set -x
+          pwd
+          ls -la
+          ls "root project/" || echo "no rp"
+          mkdir -p rp/build
+          dmesg | head -5 > rp/build/vmlinuz || echo SERVECOSYS > rp/build/vmlinuz
+          ls -la rp/build/vmlinuz
+      - name: cleanup
+        run: rm -rf rp

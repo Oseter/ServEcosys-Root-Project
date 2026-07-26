@@ -17,17 +17,13 @@ jobs:
 
       - name: Copy kernel
         run: |
+          set +e
           mkdir -p "root project/build"
-          ls -la /boot/
-          KERNEL=$(ls /boot/vmlinuz* 2>/dev/null | head -1)
+          KERNEL=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1)
           if [ -z "$KERNEL" ]; then
-            echo "No kernel in /boot, checking /lib/modules..."
-            KERNEL=$(ls /lib/modules/*/vmlinuz 2>/dev/null | head -1)
-          fi
-          if [ -z "$KERNEL" ]; then
-            echo "Still no kernel, downloading..."
-            sudo apt-get install -y linux-image-generic 2>/dev/null || true
-            KERNEL=$(ls /boot/vmlinuz* 2>/dev/null | head -1)
+            echo "No kernel in /boot, installing..."
+            sudo apt-get install -y -qq linux-image-generic
+            KERNEL=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1)
           fi
           echo "KERNEL=$KERNEL"
           cp "$KERNEL" "root project/build/vmlinuz"
@@ -35,8 +31,9 @@ jobs:
       - name: Copy busybox
         run: |
           mkdir -p "root project/scripts/initramfs/bin"
-          which busybox
-          cp "$(which busybox)" "root project/scripts/initramfs/bin/"
+          cp /bin/busybox "root project/scripts/initramfs/bin/" 2>/dev/null || \
+          cp /usr/bin/busybox "root project/scripts/initramfs/bin/" 2>/dev/null || \
+          (sudo apt-get install -y -qq busybox-static && cp /bin/busybox "root project/scripts/initramfs/bin/")
 
       - name: Make initramfs
         run: |

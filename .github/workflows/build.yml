@@ -15,23 +15,23 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
 
-      - name: Prepare kernel & initramfs
-        shell: bash
+      - name: Copy kernel
+        run: cp /boot/vmlinuz-* "root project/build/vmlinuz"
+
+      - name: Copy busybox
         run: |
-          set -e
-          cd "$GITHUB_WORKSPACE/root project"
-          mkdir -p build
-          cp /boot/vmlinuz-* build/vmlinuz
-          mkdir -p scripts/initramfs/bin
-          cp $(which busybox) scripts/initramfs/bin/
-          cd scripts/initramfs
-          find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
-          echo "initramfs done"
+          mkdir -p "root project/scripts/initramfs/bin"
+          cp /bin/busybox "root project/scripts/initramfs/bin/"
+          chmod +x "root project/scripts/initramfs/init"
+
+      - name: Make initramfs
+        run: |
+          cd "root project/scripts/initramfs"
+          find . | cpio -H newc -o | gzip > ../../build/initramfs.cpio.gz
 
       - name: Build ISO
-        shell: bash
         run: |
-          cd "$GITHUB_WORKSPACE/root project"
+          cd "root project"
           chmod +x scripts/build_image.sh
           sudo bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
 

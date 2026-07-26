@@ -13,9 +13,21 @@ jobs:
 
       - name: kernel
         run: |
+          set +e
           mkdir -p "root project/build"
-          echo "dummy kernel" > "root project/build/vmlinuz"
+          test -d /boot && ls /boot/ 2>&1 || echo "no /boot"
+          for f in /boot/vmlinuz*; do
+            if [ -f "$f" ]; then
+              cp "$f" "root project/build/vmlinuz"
+              echo "kernel: $f"
+              break
+            fi
+          done
+          if [ ! -f "root project/build/vmlinuz" ]; then
+            echo "dummy kernel" > "root project/build/vmlinuz"
+          fi
           ls -la "root project/build/vmlinuz"
+          set -e
 
       - name: initramfs
         run: |

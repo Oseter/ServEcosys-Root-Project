@@ -16,13 +16,14 @@ jobs:
           sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
 
       - name: Copy kernel
-        run: cp /boot/vmlinuz-* "root project/build/vmlinuz"
+        run: |
+          mkdir -p "root project/build"
+          cp /boot/vmlinuz-* "root project/build/vmlinuz"
 
       - name: Copy busybox
         run: |
           mkdir -p "root project/scripts/initramfs/bin"
           cp /bin/busybox "root project/scripts/initramfs/bin/"
-          chmod +x "root project/scripts/initramfs/init"
 
       - name: Make initramfs
         run: |

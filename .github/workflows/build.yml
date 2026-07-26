@@ -10,6 +10,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Debug
+        run: |
+          pwd
+          ls -la "root project/" || echo "no root project dir"
+          ls /boot/ || echo "no /boot"
+          which busybox || echo "no busybox"
+          uname -r
+
       - name: Install deps
         run: |
           sudo apt-get update
@@ -19,11 +27,13 @@ jobs:
         run: |
           cd "root project"
           mkdir -p build
-          cp /boot/vmlinuz-$(uname -r) build/vmlinuz
+          KERNEL=$(ls /boot/vmlinuz-* | head -1)
+          echo "Using kernel: $KERNEL"
+          cp "$KERNEL" build/vmlinuz
           mkdir -p scripts/initramfs/bin
           cp $(which busybox) scripts/initramfs/bin/
           cd scripts/initramfs/bin
-          for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep switch_root; do
+          for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg grep cut sed echo sleep; do
             ln -sf busybox $cmd 2>/dev/null || true
           done
           cd "$GITHUB_WORKSPACE/root project"
@@ -37,7 +47,7 @@ jobs:
           chmod +x scripts/build_image.sh
           sudo ./scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
 
-      - name: Upload ISO as artifact
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
           name: servecosys.iso

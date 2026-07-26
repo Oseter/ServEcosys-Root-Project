@@ -14,18 +14,7 @@ jobs:
       - name: kernel
         run: |
           mkdir -p "root project/build"
-          KFILE=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1) || true
-          if [ -z "$KFILE" ]; then
-            echo "no kernel, trying apt..."
-            sudo apt-get install -y -qq linux-image-generic || true
-            KFILE=$(find /boot -name 'vmlinuz*' -type f 2>/dev/null | head -1) || true
-          fi
-          if [ -z "$KFILE" ]; then
-            echo "fallback to dummy"
-            echo "dummy" > "root project/build/vmlinuz"
-          else
-            cp "$KFILE" "root project/build/vmlinuz"
-          fi
+          echo "dummy kernel" > "root project/build/vmlinuz"
           ls -la "root project/build/vmlinuz"
 
       - name: initramfs

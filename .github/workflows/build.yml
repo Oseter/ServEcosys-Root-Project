@@ -2,6 +2,8 @@ name: Build ServEcosys ISO
 on:
   push:
     branches: [ main ]
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,19 +17,23 @@ jobs:
         run: |
           set +e
           mkdir -p "root project/build"
-          test -d /boot && ls /boot/ 2>&1 || echo "no /boot"
           for f in /boot/vmlinuz*; do
             if [ -f "$f" ]; then
               cp "$f" "root project/build/vmlinuz"
-              echo "kernel: $f"
+              echo "Using kernel: $f"
               break
             fi
           done
           if [ ! -f "root project/build/vmlinuz" ]; then
-            echo "dummy kernel" > "root project/build/vmlinuz"
+            sudo apt-get install -y -qq linux-image-generic
+            for f in /boot/vmlinuz*; do
+              if [ -f "$f" ]; then
+                cp "$f" "root project/build/vmlinuz"
+                break
+              fi
+            done
           fi
           ls -la "root project/build/vmlinuz"
-          set -e
 
       - name: initramfs
         run: |
@@ -36,14 +42,12 @@ jobs:
           chmod +x "root project/scripts/initramfs/init" || true
           cd "root project/scripts/initramfs"
           find . -type f | cpio -H newc -o | gzip > ../../build/initramfs.cpio.gz
-          ls -la ../../build/initramfs.cpio.gz
 
       - name: iso
         run: |
           cd "root project"
           chmod +x scripts/build_image.sh
           sudo bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
-          ls -la build/servecosys.iso
 
       - name: upload
         uses: actions/upload-artifact@v4
@@ -52,3 +56,14 @@ jobs:
           path: root project/build/servecosys.iso
           compression-level: 0
           retention-days: 90
+
+      - name: release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: v0.1.0-${{ github.run_number }}
+          name: ServEcosys v0.1.0-${{ github.run_number }}
+          body: Bootable ISO for UEFI systems
+          files: root project/build/servecosys.iso
+          fail_on_unmatched_files: false
+          make_latest: true

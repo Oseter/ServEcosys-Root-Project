@@ -15,48 +15,37 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
 
-      - name: Debug boot
-        run: |
-          echo "=== /boot/ ==="
-          ls -la /boot/ || echo "no boot"
-          echo "=== uname ==="
-          uname -r
-          echo "=== find ==="
-          find /boot -type f 2>/dev/null || echo "no files"
-          echo "=== GITHUB_WORKSPACE ==="
-          echo "$GITHUB_WORKSPACE"
-          ls -la "$GITHUB_WORKSPACE/" || echo "no workspace"
-
-      - name: Prepare kernel
+      - name: Get kernel
         run: |
           mkdir -p "root project/build"
-          INSTALLED=$(ls /boot/vmlinuz-* 2>/dev/null | head -1)
-          if [ -n "$INSTALLED" ]; then
-            cp "$INSTALLED" "root project/build/vmlinuz"
-            echo "Kernel: $INSTALLED"
-          else
-            echo "No kernel found, installing linux-image-generic..."
+          KFILE=$(ls /boot/vmlinuz-* 2>/dev/null | head -1) || true
+          if [ -z "$KFILE" ]; then
             sudo apt-get install -y -qq linux-image-generic
-            KFILE=$(ls /boot/vmlinuz-* | head -1)
-            cp "$KFILE" "root project/build/vmlinuz"
-            echo "Kernel: $KFILE"
+            KFILE=$(ls /boot/vmlinuz-* | head -1) || true
           fi
+          cp "$KFILE" "root project/build/vmlinuz"
           ls -la "root project/build/vmlinuz"
 
-      - name: Prepare initramfs
+      - name: Initramfs
         run: |
           mkdir -p "root project/scripts/initramfs/bin"
-          cp /bin/busybox "root project/scripts/initramfs/bin/"
-          chmod +x "root project/scripts/initramfs/init"
+          BB=$(which busybox) || true
+          if [ -z "$BB" ]; then
+            sudo apt-get install -y -qq busybox-static
+            BB=$(which busybox) || true
+          fi
+          cp "$BB" "root project/scripts/initramfs/bin/"
+          chmod +x "root project/scripts/initramfs/init" 2>/dev/null || true
           cd "root project/scripts/initramfs"
-          find . | cpio -H newc -o | gzip > "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
-          ls -la "$GITHUB_WORKSPACE/root project/build/initramfs.cpio.gz"
+          find . -type f | cpio -H newc -o 2>/dev/null | gzip > ../../build/initramfs.cpio.gz || true
+          ls -la ../../build/initramfs.cpio.gz
 
       - name: Build ISO
         run: |
           cd "root project"
           chmod +x scripts/build_image.sh
           sudo bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
+          ls -la build/servecosys.iso
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4

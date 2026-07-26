@@ -7,16 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
-      - name: kernel
+      - name: Test with spaces
         run: |
-          set -x
-          pwd
-          ls -la
-          ls "root project/" || echo "no rp"
-          mkdir -p rp/build
-          dmesg | head -5 > rp/build/vmlinuz || echo SERVECOSYS > rp/build/vmlinuz
-          ls -la rp/build/vmlinuz
-      - name: cleanup
-        run: rm -rf rp
+          mkdir -p "root project/build"
+          echo hello > "root project/build/test.txt"
+          ls -la "root project/build/"

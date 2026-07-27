@@ -97,16 +97,8 @@ menuentry \"ServEcosys\" {
           name: ServEcosys v0.1.0-${{ github.run_number }}
           body: |
             ## ServEcosys Root Project
-            
-            ### 镜像文件
-            - `servecosys.iso` — 光盘镜像 (ISO9660 + UEFI)
-            - `servecosys.img` — 磁盘镜像 (GPT + FAT32 + Btrfs)
-            
-            ### 用途
-            - **ISO**: QEMU, 虚拟机, 刻盘
-            - **IMG**: 写入 U 盘直接启动
-          files: |
-            root project/build/servecosys.iso
-            root project/build/servecosys.img
+            - servecosys.iso — ISO9660 + UEFI
+            - servecosys.img — GPT + FAT32 + Btrfs
+          files: root project/build/servecosys.*
           fail_on_unmatched_files: false
           make_latest: true

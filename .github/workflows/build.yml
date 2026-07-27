@@ -1,4 +1,4 @@
-name: Build ServEcosys ISO
+name: Build ServEcosys
 on:
   push:
     branches: [ main ]
@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xorriso mtools dosfstools grub-pc-bin grub-efi-amd64-bin busybox-static cpio
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xorriso mtools dosfstools fdisk btrfs-progs grub-pc-bin grub-efi-amd64-bin busybox-static cpio
 
       - name: kernel
         run: |
@@ -49,11 +49,43 @@ jobs:
           chmod +x scripts/build_image.sh
           sudo bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
 
+      - name: img
+        run: |
+          cd "root project"
+          IMG="build/servecosys.img"
+          dd if=/dev/zero of="$IMG" bs=1M count=256 2>/dev/null
+          parted "$IMG" mklabel gpt 2>/dev/null
+          parted "$IMG" mkpart primary fat32 1MiB 64MiB 2>/dev/null
+          parted "$IMG" mkpart primary btrfs 64MiB 100% 2>/dev/null
+          parted "$IMG" set 1 esp on 2>/dev/null
+          ESP=$(sudo losetup --show -fP "$IMG" 2>/dev/null)
+          sudo mkfs.fat -F32 "${ESP}p1" 2>/dev/null
+          sudo mkfs.btrfs -f "${ESP}p2" 2>/dev/null
+          mkdir -p /mnt/esp /mnt/root
+          sudo mount "${ESP}p1" /mnt/esp
+          sudo mount "${ESP}p2" /mnt/root
+          sudo mkdir -p /mnt/esp/EFI/BOOT
+          sudo grub-install --target=x86_64-efi --efi-directory=/mnt/esp --boot-directory=/mnt/root/boot --removable 2>/dev/null || true
+          sudo cp build/vmlinuz /mnt/root/boot/
+          sudo cp build/initramfs.cpio.gz /mnt/root/boot/
+          sudo mkdir -p /mnt/root/boot/grub
+          sudo bash -c 'echo "set default=0
+set timeout=5
+menuentry \"ServEcosys\" {
+  linux /boot/vmlinuz console=ttyS0
+  initrd /boot/initramfs.cpio.gz
+}" > /mnt/root/boot/grub/grub.cfg'
+          sudo umount /mnt/esp /mnt/root
+          sudo losetup -d "$ESP"
+          ls -la "$IMG"
+
       - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: servecosys.iso
-          path: root project/build/servecosys.iso
+          name: servecosys-images
+          path: |
+            root project/build/servecosys.iso
+            root project/build/servecosys.img
           compression-level: 0
           retention-days: 90
 
@@ -63,7 +95,18 @@ jobs:
         with:
           tag_name: v0.1.0-${{ github.run_number }}
           name: ServEcosys v0.1.0-${{ github.run_number }}
-          body: Bootable ISO for UEFI systems
-          files: root project/build/servecosys.iso
+          body: |
+            ## ServEcosys Root Project
+            
+            ### 镜像文件
+            - `servecosys.iso` — 光盘镜像 (ISO9660 + UEFI)
+            - `servecosys.img` — 磁盘镜像 (GPT + FAT32 + Btrfs)
+            
+            ### 用途
+            - **ISO**: QEMU, 虚拟机, 刻盘
+            - **IMG**: 写入 U 盘直接启动
+          files: |
+            root project/build/servecosys.iso
+            root project/build/servecosys.img
           fail_on_unmatched_files: false
           make_latest: true

@@ -147,10 +147,10 @@ initramfs:
 .PHONY: iso image
 iso image: kernel initramfs
 	@echo "[STEP] 生成可启动 ISO (产品: $(PRODUCT), 设备: $(DEVICE))..."
-	@OUTPUT_ISO="$(OUT_DIR)/servecosys.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
+	@OUTPUT_ISO="$(OUT_DIR)/ConceptOS.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
 		INITRAMFS="$(OUT_DIR)/initramfs.cpio.gz" \
 		$(ROOT_PROJECT)/scripts/build_image.sh
-	@echo "[OK] 可启动 ISO 完成: $(OUT_DIR)/servecosys.iso"
+	@echo "[OK] 可启动 ISO 完成: $(OUT_DIR)/ConceptOS.iso"
 
 # ---- QEMU 启动验证 ----
 QEMU_ARCH ?= x86_64
@@ -166,7 +166,7 @@ full: keys kernel modules initramfs iso
 	@echo "============================================="
 	@echo " ServEcosys 完整构建完成"
 	@echo " 产品: $(PRODUCT) | 设备: $(DEVICE)"
-	@echo " 可启动镜像: $(OUT_DIR)/servecosys.iso"
+	@echo " 可启动镜像: $(OUT_DIR)/ConceptOS.iso"
 	@echo " 内核:       $(OUT_DIR)/vmlinuz"
 	@echo " 模块:       $(OUT_DIR)/modules/"
 	@echo " 启动测试:   make qemu"

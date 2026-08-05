@@ -541,7 +541,7 @@ main() {
             echo "  uid         - Build UID frontend daemons (auto-builds deps)"
             echo "  selinux     - Build SELinux policy module"
             echo "  daemons     - Build deps + SED + UID"
-            echo "  image       - Generate bootable disk image (build/servecosys.img)"
+            echo "  image       - Generate bootable ISO (build/ConceptOS.iso)"
             echo "  full        - Complete build (bootloader + kernel + modules + initramfs + sign + daemons)"
             echo "  clean       - Remove all build artifacts"
             echo ""

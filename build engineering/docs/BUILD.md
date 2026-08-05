@@ -73,8 +73,7 @@ make qemu
 | `make kernel` | 集成并编译内核 |
 | `make modules` | 编译内核模块（guard/probe/pc/mobile） |
 | `make initramfs` | 组装可启动 initramfs（内置 busybox） |
-| `make iso` | 生成可启动 ISO（grub-mkrescue / xorriso） |
-| `make qemu` | 在 QEMU 中启动验证 |
+| `make iso` | 生成可启动 ISO（grub-mkrescue / xorriso） || `make qemu` | 在 QEMU 中启动验证 |
 | `make keys` / `make sign` | 生成签名密钥 / 对内核签名 |
 | `make clean` | 清理构建产物 |
 
@@ -119,12 +118,13 @@ build/
 ├── vmlinuz                    # 内核映像 (bzImage)
 ├── initramfs.cpio.gz          # 可启动 initramfs（内置静态 busybox 与 system/ 层）
 ├── modules/*.ko               # 内核模块（guard/probe 等）
-├── servecosys.iso             # 可启动 ISO（grub-mkrescue / xorriso，UEFI）
+├── ConceptOS.iso              # 概念OS 可启动 ISO（grub-mkrescue / xorriso，UEFI）
 └── vmlinuz.sig                # 内核签名（make sign 后）
 ```
 
-**启动属性：** ISO 采用"live 模式"——initramfs 内自带完整 `system/` 集成层与
-静态 busybox，找不到磁盘根文件系统时自动在 tmpfs 上重建根并切换到
-`/system/sysinit`，因此无需外部磁盘即可从 ISO 真启动进入概念OS控制台。
+**概念OS (ConceptOS)：** 是 ServEcosys 系操作系统的标准与概念呈现。ISO 采用"live
+模式"——initramfs 内自带完整 `system/` 集成层与静态 busybox，找不到磁盘根文件
+系统时自动在 tmpfs 上重建根并切换到 `/system/sysinit`，因此无需外部磁盘即可从
+ISO 真启动进入概念OS控制台。
 
 **根本理念：以用户为中心，为用户服务。**

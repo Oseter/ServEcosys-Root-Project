@@ -3,7 +3,8 @@
 # ServEcosys Bootable ISO Image Builder
 #
 # 生成标准 ISO9660 + El Torito UEFI 可启动镜像
-# 输出: build/servecosys.iso
+# 概念OS (ConceptOS) - ServEcosys 系操作系统标准概念呈现
+# 输出: build/ConceptOS.iso
 #
 # iOS 设备可直接从 GitHub Actions 下载 .iso 文件
 # 用法:
@@ -18,7 +19,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build"
-OUTPUT_ISO="${OUTPUT_ISO:-$BUILD_DIR/servecosys.iso}"
+OUTPUT_ISO="${OUTPUT_ISO:-$BUILD_DIR/ConceptOS.iso}"
 
 KERNEL="${KERNEL:-$BUILD_DIR/vmlinuz}"
 INITRAMFS="${INITRAMFS:-$BUILD_DIR/initramfs.cpio.gz}"
@@ -112,7 +113,7 @@ prepare_iso_dir() {
 
     # 版本信息
     {
-        echo "概念OS (Concept OS) - ServEcosys 系操作系统标准概念化呈现"
+        echo "概念OS (ConceptOS) - ServEcosys 系操作系统标准与概念呈现"
         echo "Version: 0.1.0 'Genesis'"
         echo "Build: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Kernel: $(basename "${KERNEL:-unknown}")"
@@ -131,7 +132,7 @@ create_efi_boot_image() {
 
     rm -f "$EFI_IMG"
     dd if=/dev/zero of="$EFI_IMG" bs=1k count=4096 2>/dev/null
-    mkfs.fat -F 12 -n "SERVECOSYS" "$EFI_IMG" > /dev/null
+    mkfs.fat -F 12 -n "CONCEPTOS" "$EFI_IMG" > /dev/null
 
     if command -v grub-mkrescue &> /dev/null; then
         log_info "  Skipping EFI image - using grub-mkrescue"
@@ -168,8 +169,8 @@ build_iso() {
         xorriso -as mkisofs \
             -iso-level 3 \
             -full-iso9660-filenames \
-            -volid "SERVECOSYS" \
-            -appid "ServEcosys Root Project" \
+            -volid "CONCEPTOS" \
+            -appid "ConceptOS (ServEcosys Series)" \
             -publisher "ServEcosys" \
             -eltorito-boot boot/efi.img \
             -no-emul-boot \
@@ -249,7 +250,7 @@ main() {
                 echo "Generate bootable ISO with UEFI support"
                 echo ""
                 echo "Usage: $0 [options]"
-                echo "  -o <file>     Output ISO path (default: build/servecosys.iso)"
+                echo "  -o <file>     Output ISO path (default: build/ConceptOS.iso)"
                 echo "  -k <file>     Kernel image path"
                 echo "  -i <file>     Initramfs path"
                 echo "  -b <file>     Bootloader EFI path"

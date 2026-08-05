@@ -157,6 +157,24 @@ static int find_process(pid_t pid)
     return -1;
 }
 
+/* 回收已退出进程的表项：
+ *   - 防止 PID 被内核复用后，新进程继承旧进程的权限级/授权
+ *   - 防止表写满 MAX_REQUESTS 后无法再登记（DoS）
+ */
+static void reap_dead_processes(void)
+{
+    for (int i = 0; i < proc_count; ) {
+        pid_t pid = proc_table[i].pid;
+        if (pid > 0 && (kill(pid, 0) == 0 || errno == EPERM)) {
+            i++;
+            continue;
+        }
+        memmove(&proc_table[i], &proc_table[i + 1],
+                (size_t)(proc_count - i - 1) * sizeof(proc_cred_t));
+        proc_count--;
+    }
+}
+
 static perm_level_t get_process_level(pid_t pid)
 {
     for (int i = 0; i < proc_count; i++)
@@ -433,6 +451,9 @@ int main(int argc, char *argv[])
         ssize_t n = read(client, &req, sizeof(req));
         if (n > 0) {
             pid_t peer_pid = get_peer_pid(client);
+
+            /* 先回收已退出进程，防止 PID 复用继承权限 / 表满 */
+            reap_dead_processes();
 
             perm_response_t resp = handle_request(&req, peer_pid);
             write(client, &resp, sizeof(resp));

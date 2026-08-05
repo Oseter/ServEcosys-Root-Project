@@ -231,12 +231,18 @@ apply:
 }
 
 /*
- * 注册系统管理器。只有首个声明者可成为 manager，后续声明一律拒绝。
+ * 注册系统管理器。只有首个声明者可成为 manager，后续声明一律拒绝，
+ * 但若已注册的 manager 已退出（崩溃/重启），允许新实例接管管理权。
  */
 static int register_manager(pid_t peer_pid)
 {
-    if (manager_pid >= 0)
-        return -1;
+    if (manager_pid >= 0) {
+        /* 原 manager 仍存活则拒绝；已死亡则允许新管理器接管 */
+        if (kill(manager_pid, 0) == 0 || errno == EPERM)
+            return -1;
+        fprintf(stdout, "[ARBITER] Previous manager (PID %d) gone; adopting %d\n",
+                manager_pid, peer_pid);
+    }
     manager_pid = peer_pid;
     fprintf(stdout, "[ARBITER] System Manager registered (PID %d)\n", peer_pid);
     return 0;

@@ -116,8 +116,8 @@ kernel: kernel-src check-kernel-src kernel-patch
 	@echo "[STEP] 配置内核 ($(KERNEL_DEFCONFIG))..."
 	@cp "$(KERNEL_CORE)/servecosys_defconfig" "$(LINUX_SRC)/.config"
 	@$(MAKE) -C "$(LINUX_SRC)" olddefconfig
-	@echo "  [DIAG] .config 中的 SERVECOSYS 符号:"
-	@grep '^CONFIG_SERVECOSYS' "$(LINUX_SRC)/.config" || true
+	@echo "  [DIAG] .config 中的 SERVECOSYS 符号（含未设置）:"
+	@grep -E '^#? ?CONFIG_SERVECOSYS' "$(LINUX_SRC)/.config" || true
 	@test "$$(grep -c '^CONFIG_SERVECOSYS_CORE=y' "$(LINUX_SRC)/.config")" -ge 1 || { \
 		echo "[ERROR] CONFIG_SERVECOSYS_CORE 未启用——Kconfig 挂接未生效，请查看上方 apply_kernel_patch 诊断"; \
 		exit 1; \

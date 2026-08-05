@@ -53,13 +53,19 @@ done
 cp "$KERNEL_MODULES_SRC/Kconfig" "$CORE_DST/modules/Kconfig"
 cp "$KERNEL_MODULES_SRC/Makefile" "$CORE_DST/modules/Makefile"
 
-# ---- 3. 挂接 Kconfig（source 进 kernel/ 的 Kconfig 树入口） ----
-KERNEL_KCONFIG="$LINUX_SRC/kernel/Kconfig"
+# ---- 3. 挂接 Kconfig（source 进顶层 Kconfig，真正被 kconfig 读取的入口） ----
+# 注意：Linux 顶层 Kconfig 并不 source "kernel/Kconfig"（该文件不存在），
+#       必须挂到顶层 Kconfig 末尾。
+KERNEL_KCONFIG="$LINUX_SRC/Kconfig"
+if [ ! -f "$KERNEL_KCONFIG" ]; then
+    echo "  [3/5] [ERROR] 顶层 Kconfig 不存在: $KERNEL_KCONFIG"
+    exit 1
+fi
 if ! grep -q "kernel/servecosys/Kconfig" "$KERNEL_KCONFIG" 2>/dev/null; then
-    echo "  [3/5] 挂接内核中央 Kconfig"
+    echo "  [3/5] 挂接内核中央 Kconfig -> 顶层 Kconfig"
     echo 'source "kernel/servecosys/Kconfig"' >> "$KERNEL_KCONFIG"
 else
-    echo "  [3/5] 内核中央 Kconfig 已挂接，跳过"
+    echo "  [3/5] 顶层 Kconfig 已挂接，跳过"
 fi
 
 # 在内核中央 Kconfig 中挂接模块 Kconfig 入口
@@ -94,7 +100,7 @@ echo "[OK] 内核中央与模块集成完成"
 # ---- 6. 诊断输出：确认同步与挂接确实生效 ----
 echo "[DIAG] 同步结果（kernel/servecosys 目录树）:"
 find "$CORE_DST" -maxdepth 3 -type f | sed "s|$LINUX_SRC/||" | sort
-echo "[DIAG] kernel/Kconfig 末尾 3 行:"
+echo "[DIAG] 顶层 Kconfig 末尾 3 行:"
 tail -n 3 "$KERNEL_KCONFIG"
 echo "[DIAG] kernel/servecosys/Kconfig 末尾 2 行:"
 tail -n 2 "$CORE_KCONFIG_DST"

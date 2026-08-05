@@ -110,7 +110,7 @@ bootloader:
 
 # ---- 编译内核 ----
 .PHONY: kernel
-kernel: check-kernel-src kernel-patch
+kernel: kernel-src check-kernel-src kernel-patch
 	@echo "[STEP] 配置内核 ($(KERNEL_DEFCONFIG))..."
 	@cp "$(KERNEL_CORE)/servecosys_defconfig" "$(LINUX_SRC)/.config"
 	@$(MAKE) -C "$(LINUX_SRC)" olddefconfig

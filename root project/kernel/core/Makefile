@@ -6,7 +6,7 @@
 # 内核源码树的 Kconfig/Makefile 递归链）。
 #
 
-obj-y += servecosys_core.o
+obj-y += servecsys_core.o
 servecsys_core-y := main.o sched.o mm.o net.o
 
 # 递归进入 modules/（其内部由 kernel/servecosys/modules/Makefile 按 CONFIG 选择）

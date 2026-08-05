@@ -1,5 +1,12 @@
 #include "crypto.h"
 
+/* DER-encoded DigestInfo prefix for SHA-256 (rsp #2.2.1, RFC 3447) */
+static const UINT8 SHA256_DIGEST_INFO[19] = {
+    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+    0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+    0x00, 0x04, 0x20
+};
+
 static const UINT32 SHA256_K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
     0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -107,55 +114,188 @@ VOID sha256_final(sha256_ctx_t *ctx, UINT8 *digest) {
     }
 }
 
+/*
+ * Fixed-width big integers for modular exponentiation (RSA-2048).
+ * Numbers are stored little-endian by 32-bit limb (v[0] = least significant).
+ * BN     = limbs needed for a 2048-bit modulus (64).
+ * BN_PROD = limbs for a product (128).
+ */
+#define BN        64
+#define BN_PROD   128
+
+static int bn_cmp(const UINT32 *a, const UINT32 *b, int n)
+{
+    int i;
+    for (i = n - 1; i >= 0; i--) {
+        if (a[i] > b[i]) return 1;
+        if (a[i] < b[i]) return -1;
+    }
+    return 0;
+}
+
+static void bn_sub(UINT32 *a, const UINT32 *b, int n)
+{
+    UINT64 borrow = 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        UINT64 cur = (UINT64)a[i] - b[i] - borrow;
+        a[i] = (UINT32)cur;
+        borrow = (UINT32)(cur >> 32) & 1;
+    }
+}
+
+/* r = (r << 1) | bit  (bit is 0 or 1) */
+static void bn_shl1(UINT32 *r, int n, int bit)
+{
+    UINT32 carry = bit ? 1 : 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        UINT64 cur = ((UINT64)r[i] << 1) | carry;
+        r[i] = (UINT32)cur;
+        carry = (UINT32)(cur >> 32);
+    }
+}
+
+/* out = a * b ; a,b are n limbs, out is 2n limbs */
+static void bn_mul(const UINT32 *a, const UINT32 *b, int n, UINT32 *out)
+{
+    int i, j;
+    for (i = 0; i < 2 * n; i++) out[i] = 0;
+    for (i = 0; i < n; i++) {
+        UINT32 carry = 0;
+        for (j = 0; j < n; j++) {
+            UINT64 cur = (UINT64)out[i + j] + (UINT64)a[i] * b[j] + carry;
+            out[i + j] = (UINT32)cur;
+            carry = (UINT32)(cur >> 32);
+        }
+        out[i + n] = carry;
+    }
+}
+
+/* r = in mod m ; in is in_limbs wide, m and r are mn limbs */
+static void bn_reduce(const UINT32 *in, int in_limbs,
+                      const UINT32 *m, int mn, UINT32 *r)
+{
+    int i;
+    for (i = 0; i < mn; i++) r[i] = 0;
+    for (i = in_limbs * 32 - 1; i >= 0; i--) {
+        int bit = (in[i >> 5] >> (i & 31)) & 1;
+        int top = (r[mn - 1] >> 31) & 1;   /* bit shifted out of the window */
+        bn_shl1(r, mn, bit);
+        if (top || bn_cmp(r, m, mn) >= 0)
+            bn_sub(r, m, mn);
+    }
+}
+
+/* out = (a * b) mod m ; a,b,m are BN limbs, out is BN limbs */
+static void bn_mul_mod(UINT32 *out, const UINT32 *a, const UINT32 *b,
+                       const UINT32 *m)
+{
+    UINT32 prod[BN_PROD];
+    UINT32 rem[BN];
+    bn_mul(a, b, BN, prod);
+    bn_reduce(prod, BN_PROD, m, BN, rem);
+    CopyMem(out, rem, sizeof(rem));
+}
+
+/* out = base^exp mod m */
+static void bn_modexp(UINT32 *out, const UINT32 *base, UINT32 exp,
+                      const UINT32 *m)
+{
+    UINT32 result[BN];
+    UINT32 b[BN];
+    UINT32 tmp[BN];
+    int i;
+
+    for (i = 0; i < BN; i++) result[i] = 0;
+    result[0] = 1;
+    CopyMem(b, base, sizeof(b));
+
+    while (exp) {
+        if (exp & 1)
+            bn_mul_mod(result, result, b, m);
+        exp >>= 1;
+        if (exp) {
+            bn_mul_mod(tmp, b, b, m);
+            CopyMem(b, tmp, sizeof(b));
+        }
+    }
+
+    CopyMem(out, result, sizeof(result));
+}
+
+/* Convert a big-endian byte array (byte 0 = most significant) into a
+ * little-endian limb array of BN limbs. */
+static void bn_from_bytes(UINT32 *out, const UINT8 *bytes, UINTN nbytes)
+{
+    UINTN b;
+    for (b = 0; b < BN; b++) out[b] = 0;
+    for (b = 0; b < nbytes; b++) {
+        int limb = (int)(nbytes - 1 - b) >> 2;
+        int sh = 24 - ((int)(b & 3) * 8);
+        out[limb] |= (UINT32)bytes[b] << sh;
+    }
+}
+
+/* Convert a little-endian limb array into a big-endian byte array. */
+static void bn_to_bytes(const UINT32 *in, UINT8 *bytes, UINTN nbytes)
+{
+    UINTN b;
+    for (b = 0; b < nbytes; b++) {
+        int limb = (int)(nbytes - 1 - b) >> 2;
+        int sh = 24 - ((int)(b & 3) * 8);
+        bytes[b] = (UINT8)(in[limb] >> sh);
+    }
+}
+
 BOOLEAN rsa2048_verify(const rsa_pubkey_t *key, const UINT8 *digest, UINTN digest_size, const UINT8 *signature) {
-    UINT8 decoded[RSA2048_KEY_SIZE];
-    UINTN i, j;
-    UINT8 hash_buf[SHA256_DIGEST_SIZE];
-    sha256_ctx_t ctx;
+    UINT32 n_limbs[BN];
+    UINT32 s_limbs[BN];
+    UINT32 m_limbs[BN];
+    UINT8 em[RSA2048_KEY_SIZE];
+    UINTN i, ps_len, k;
 
     if (digest_size != SHA256_DIGEST_SIZE)
         return FALSE;
 
-    if (sizeof(decoded) < RSA2048_KEY_SIZE)
+    if (key->modulus_size != RSA2048_KEY_SIZE ||
+        key->exponent != 0x10001)
         return FALSE;
 
-    for (i = 0; i < RSA2048_KEY_SIZE; i++)
-        decoded[i] = 0;
+    bn_from_bytes(n_limbs, key->modulus, RSA2048_KEY_SIZE);
+    bn_from_bytes(s_limbs, signature, RSA2048_KEY_SIZE);
 
-    for (i = 0; i < RSA2048_KEY_SIZE; i++) {
-        UINT8 acc = 0;
-        for (j = 0; j < RSA2048_KEY_SIZE; j++) {
-            UINT16 tmp = (UINT16)decoded[j] + ((UINT16)signature[i] * (UINT16)key->modulus[(RSA2048_KEY_SIZE - 1 - i + j) % RSA2048_KEY_SIZE]);
-            decoded[j] = (UINT8)(tmp & 0xFF);
-        }
-        (void)acc;
-    }
+    /* Recover m = signature^exponent mod modulus. */
+    bn_modexp(m_limbs, s_limbs, key->exponent, n_limbs);
+    bn_to_bytes(m_limbs, em, RSA2048_KEY_SIZE);
 
-    for (i = 0; i < RSA2048_KEY_SIZE; i++) {
-        UINT8 tmp = decoded[i];
-        decoded[i] = decoded[RSA2048_KEY_SIZE - 1 - i];
-        decoded[RSA2048_KEY_SIZE - 1 - i] = tmp;
-    }
-
-    if (decoded[0] != 0x00 || decoded[1] != 0x01)
+    /* PKCS#1 v1.5 encoding: 00 01 PS(FF..FF) 00 T */
+    if (em[0] != 0x00 || em[1] != 0x01)
         return FALSE;
 
-    for (i = 2; i < RSA2048_KEY_SIZE - digest_size - 1; i++) {
-        if (decoded[i] != 0xFF)
+    i = 2;
+    ps_len = 0;
+    while (i < RSA2048_KEY_SIZE && em[i] == 0xFF) {
+        ps_len++;
+        i++;
+    }
+
+    if (ps_len < 8)                    /* PS must be at least 8 bytes */
+        return FALSE;
+    if (i >= RSA2048_KEY_SIZE || em[i] != 0x00) /* 00 separator */
+        return FALSE;
+    i++;                               /* now at T (DigestInfo || digest) */
+
+    if (RSA2048_KEY_SIZE - i != sizeof(SHA256_DIGEST_INFO) + SHA256_DIGEST_SIZE)
+        return FALSE;
+
+    for (k = 0; k < sizeof(SHA256_DIGEST_INFO); k++)
+        if (em[i + k] != SHA256_DIGEST_INFO[k])
             return FALSE;
-    }
 
-    if (decoded[i++] != 0x00)
-        return FALSE;
-
-    sha256_init(&ctx);
-    sha256_update(&ctx, digest, digest_size);
-    sha256_final(&ctx, hash_buf);
-
-    for (i = 0; i < digest_size; i++) {
-        if (decoded[RSA2048_KEY_SIZE - digest_size + i] != hash_buf[i])
+    for (k = 0; k < digest_size; k++)
+        if (em[i + sizeof(SHA256_DIGEST_INFO) + k] != digest[k])
             return FALSE;
-    }
 
     return TRUE;
 }

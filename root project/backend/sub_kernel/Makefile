@@ -16,7 +16,7 @@ INCLUDES = -I$(DEPS_DIR)/crypto -I$(DEPS_DIR)/log -I$(DEPS_DIR)/ipc \
 # .smle 服务依赖声明
 selinux_manager_libs    = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libselinux.a
 hal_manager_libs        = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libhal.a
-permission_arbiter_libs = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a $(DEPS_BUILD)/libperm.a
+permission_arbiter_libs = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a $(DEPS_BUILD)/libperm.a $(DEPS_BUILD)/libselinux.a
 oipes_client_libs       = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/liboipes-net.a $(DEPS_BUILD)/libcrypto.a
 ipc_bus_libs            = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
 system_manager_libs     = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
@@ -34,7 +34,7 @@ $(OUTPUT_DIR):
 
 selinux_manager: selinux_manager.c $(selinux_manager_libs)
 	@echo "[SED:smle] Building selinux_manager (deps: log selinux)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(selinux_manager_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(selinux_manager_libs) -lpthread -lselinux
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 hal_manager: hal_manager.c $(hal_manager_libs)
@@ -43,7 +43,7 @@ hal_manager: hal_manager.c $(hal_manager_libs)
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 permission_arbiter: permission_arbiter.c $(permission_arbiter_libs)
-	@echo "[SED:smle] Building permission_arbiter (deps: log ipc perm)..."
+	@echo "[SED:smle] Building permission_arbiter (deps: log ipc perm selinux)..."
 	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(permission_arbiter_libs) -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 

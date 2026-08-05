@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <signal.h>
+#include "selinux_wrap.h"
 
 #define ARBITER_VERSION   "0.1.0"
 #define IPC_SOCK_PATH     "/var/run/servecosys_perm.sock"
@@ -125,9 +126,12 @@ static int register_process(pid_t pid, perm_level_t level)
     proc_table[proc_count].is_signed = 0;
     proc_table[proc_count].is_self_signed = 0;
     proc_table[proc_count].user_authorized_cap = PERM_LEVEL_READONLY;
-    snprintf(proc_table[proc_count].selinux_context,
-             sizeof(proc_table[proc_count].selinux_context),
-             "u:r:app_sandbox_t:s0");
+    if (selinux_get_context(pid, proc_table[proc_count].selinux_context,
+                            sizeof(proc_table[proc_count].selinux_context)) != 0) {
+        snprintf(proc_table[proc_count].selinux_context,
+                 sizeof(proc_table[proc_count].selinux_context),
+                 "u:r:app_sandbox_t:s0");
+    }
 
     return proc_count++;
 }
@@ -202,6 +206,16 @@ static int set_process_level(pid_t pid, perm_level_t new_level, pid_t peer_pid)
     if (new_level > PERM_LEVEL_DEBUG && new_level < PERM_LEVEL_SELINUX) {
         if (!is_signed_by_official(pid))
             return -1;
+    }
+
+    /* SELinux admission: the process's domain must be allowed to control
+     * itself, otherwise escalation is refused (deny-by-default). */
+    if (selinux_check(proc_table[idx].selinux_context,
+                      proc_table[idx].selinux_context,
+                      "process", "signal") != 0) {
+        fprintf(stdout, "[ARBITER] Denied: PID %d domain %s lacks process control\n",
+                pid, proc_table[idx].selinux_context);
+        return -1;
     }
 
 apply:

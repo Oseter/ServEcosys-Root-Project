@@ -94,41 +94,53 @@ static int reload_policy(void)
 static int check_permission(const char *source_context, const char *target_context,
                             const char *tclass, const char *perm)
 {
-    security_id_t ssid, tsid;
     security_class_t class;
-    access_vector_t perms;
+    access_vector_t requested;
+    struct av_decision avd;
     int ret;
 
-    ret = security_compute_av(source_context, target_context, tclass, 0, &perms);
-    if (ret < 0) {
-        fprintf(stderr, "[SED] Permission check failed: %s -> %s : %s {%s}\n",
-                source_context, target_context, tclass, perm);
+    class = string_to_security_class(tclass);
+    if (class == 0) {
+        fprintf(stderr, "[SED] Unknown class: %s\n", tclass);
         return -1;
     }
 
-    return 0;
+    requested = string_to_av_perm(tclass, perm);
+    if (requested == 0) {
+        fprintf(stderr, "[SED] Unknown permission: %s {%s}\n", tclass, perm);
+        return -1;
+    }
+
+    ret = security_compute_av(source_context, target_context,
+                              class, requested, &avd);
+    if (ret < 0) {
+        fprintf(stderr, "[SED] security_compute_av failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    if (avd.allowed & requested) {
+        fprintf(stdout, "[SED] ALLOWED: %s -> %s : %s {%s}\n",
+                source_context, target_context, tclass, perm);
+        return 0;
+    }
+
+    fprintf(stdout, "[SED] DENIED: %s -> %s : %s {%s}\n",
+            source_context, target_context, tclass, perm);
+    return 1;
 }
 
 static void print_policy_info(void)
 {
-    char *enforce;
+    int enforce;
 
     enforce = security_getenforce();
-    if (enforce) {
-        fprintf(stdout, "[SED] SELinux mode: %s\n", enforce);
-        free(enforce);
+    if (enforce < 0) {
+        fprintf(stderr, "[SED] Cannot read enforcement mode: %s\n", strerror(errno));
+        return;
     }
 
-    char **policy_names = NULL;
-    int policy_count = security_get_policy_names(&policy_names);
-    if (policy_count > 0 && policy_names) {
-        fprintf(stdout, "[SED] Loaded policies:\n");
-        for (int i = 0; i < policy_count; i++) {
-            if (policy_names[i])
-                fprintf(stdout, "  - %s\n", policy_names[i]);
-        }
-        security_free_policy_names(policy_names, policy_count);
-    }
+    fprintf(stdout, "[SED] SELinux mode: %s\n",
+            enforce ? "enforcing" : "permissive");
 }
 
 int main(int argc, char *argv[])

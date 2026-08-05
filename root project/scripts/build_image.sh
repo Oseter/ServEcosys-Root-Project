@@ -110,7 +110,7 @@ prepare_iso_dir() {
 
     # 版本信息
     {
-        echo "概念OS (Concept OS) - user-facing layer of ServEcosys"
+        echo "概念OS (Concept OS) - ServEcosys 系操作系统标准概念化呈现"
         echo "Version: 0.1.0 'Genesis'"
         echo "Build: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Kernel: $(basename "${KERNEL:-unknown}")"

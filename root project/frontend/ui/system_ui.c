@@ -3,8 +3,9 @@
  *   - 顶部导航栏（常驻）：品牌 / 域 / 实时权限级 / SELinux / 时钟 / 通知数
  *   - 下方交互终端：可输入命令，上下键历史，基础命令集
  *
- * 底层平台仍为 ServEcosys（技术标识不动）；概念OS 是其用户可见层品牌，
- * 类比 Android 与 Pixel 的关系。
+ * 概念OS 是 ServEcosys 系操作系统标准的概念化呈现：底层一切技术标准
+ * 由 ServEcosys 定义（socket 路径、uid_dom_t 域、0-11 权限级、SELinux 强制），
+ * 概念OS 以可理解、可交互的形态把整套标准的核心概念表达给使用者。
  *
  * 运行在 uid_dom_t 域
  */
@@ -287,7 +288,8 @@ static void cmd_status(void)
     struct tm *tm = localtime(&(time_t){time(NULL)});
     strftime(uptime_buf, sizeof(uptime_buf), "%Y-%m-%d %H:%M:%S", tm);
 
-    printf("  %s %s (%s) - %s platform\n", OS_BRAND, SUI_VERSION, OS_BRAND_EN, PLATFORM);
+    printf("  %s %s (%s)\n", OS_BRAND, SUI_VERSION, OS_BRAND_EN);
+    printf("  概念OS = %s 系标准概念化呈现\n", PLATFORM);
     printf("  domain      : uid_dom_t\n");
     printf("  perm level  : %s (%d)\n",
            my_level >= 0 ? level_name(my_level) : "n/a", my_level);
@@ -303,8 +305,9 @@ static void cmd_about(void)
     printf("\n");
     printf("      %s  (Concept OS) v%s\n", OS_BRAND, SUI_VERSION);
     printf("      ==============================\n");
-    printf("      User-facing layer of %s.\n", PLATFORM);
-    printf("      A terminal with a top nav bar.\n");
+    printf("      概念OS：ServEcosys 系操作系统标准的概念化呈现\n");
+    printf("      顶层为概念形态 UI（顶部导航栏 + 交互终端），\n");
+    printf("      底层实现遵循 ServEcosys 标准（域 / 权限级 / SELinux）。\n");
     printf("\n");
 }
 
@@ -484,12 +487,13 @@ int main(int argc, char *argv[])
     }
 
     add_notification("System", "Welcome to " OS_BRAND,
-                     "Concept OS v0.1.0 is ready (ServEcosys platform)", 1);
+                     "Concept OS v0.1.0 ready (ServEcosys 标准)", 1);
     add_notification("System", "SELinux Enforcing",
                      "Security policy loaded successfully", 1);
 
     draw_topbar();
-    printf("\n  %s %s  -  a terminal with a top nav bar\n", OS_BRAND, SUI_VERSION);
+    printf("\n  %s %s  -  顶部导航栏 + 交互终端\n", OS_BRAND, SUI_VERSION);
+    printf("  概念OS = ServEcosys 系标准概念化呈现\n");
     printf("  type 'help' for commands, 'exit' to quit\n\n");
 
     char line[MAX_LINE];

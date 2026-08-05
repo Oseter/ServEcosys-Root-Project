@@ -1,6 +1,7 @@
 #!/bin/sh
 #
-# 概念OS (Concept OS) UID bootstrap - user-facing layer of ServEcosys
+# 概念OS (Concept OS) UID bootstrap
+# 概念OS = ServEcosys 系操作系统标准的概念化呈现（顶部导航栏 + 交互终端）
 #
 # Starts the Frontend Interaction Domain (.ssle services) only after the
 # SED security gate (permission_arbiter + system_manager) is authoritative.

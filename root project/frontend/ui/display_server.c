@@ -148,19 +148,7 @@ static void render_status_bar(void)
 
 static void *ipc_listener(void *arg)
 {
-    struct sockaddr_un addr;
-    int server_fd;
-
-    unlink(IPC_SOCK_PATH);
-    server_fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-    if (server_fd < 0) return NULL;
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, IPC_SOCK_PATH, sizeof(addr.sun_path) - 1);
-
-    bind(server_fd, (struct sockaddr *)&addr, sizeof(addr));
-    listen(server_fd, 5);
+    int server_fd = *(int *)arg;
 
     fprintf(stdout, "[DS] IPC listener ready on %s\n", IPC_SOCK_PATH);
 
@@ -169,7 +157,6 @@ static void *ipc_listener(void *arg)
         socklen_t len = sizeof(client);
         int client_fd = accept(server_fd, (struct sockaddr *)&client, &len);
         if (client_fd < 0) continue;
-
         char cmd[256];
         ssize_t n = read(client_fd, cmd, sizeof(cmd) - 1);
         if (n > 0) {
@@ -191,8 +178,6 @@ static void *ipc_listener(void *arg)
         close(client_fd);
     }
 
-    close(server_fd);
-    unlink(IPC_SOCK_PATH);
     return NULL;
 }
 
@@ -212,7 +197,25 @@ int main(int argc, char *argv[])
     render_status_bar();
 
     pthread_t ipc_thread;
-    pthread_create(&ipc_thread, NULL, ipc_listener, NULL);
+    int server_fd = -1;
+
+    /* 先完成 bind/listen，再写 pidfile 作为就绪信号，
+     * 避免 compositor 看到 pidfile 时 socket 尚未就绪。 */
+    struct sockaddr_un addr;
+    unlink(IPC_SOCK_PATH);
+    server_fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (server_fd >= 0) {
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, IPC_SOCK_PATH, sizeof(addr.sun_path) - 1);
+        if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
+            listen(server_fd, 5) < 0) {
+            fprintf(stderr, "[DS] IPC bind/listen failed: %s\n", strerror(errno));
+            close(server_fd);
+            server_fd = -1;
+        }
+    }
+    pthread_create(&ipc_thread, NULL, ipc_listener, &server_fd);
 
     FILE *pid_fd = fopen(PID_FILE, "w");
     if (pid_fd) {
@@ -230,6 +233,11 @@ int main(int argc, char *argv[])
     }
 
     pthread_join(ipc_thread, NULL);
+
+    if (server_fd >= 0) {
+        close(server_fd);
+        unlink(IPC_SOCK_PATH);
+    }
 
     munmap(display.buffer, display.screensize);
     close(display.fd);

@@ -1,13 +1,11 @@
 #
 # ServEcosys 移动设备适配模块集 - 构建文件
 #
-# 以外部 kbuild 方式编译：
-#   make -C <linux-src> M=$(pwd) modules
-# 产物: servecosys_mobile.ko
-#
-# 也可内联进内核树编译（CONFIG_SERVECOSYS_MOBILE_MODULES=m）
+# 以内核源码树 in-tree 方式编译（obj-m，随 make modules 产出 .ko）
+# 产物: servecsys_mobile.ko
+# 入口: obj-$(CONFIG_SERVECOSYS_MOBILE_MODULES) 由 CONFIG_SERVECOSYS_MOBILE_MODULES=m 决定
 
-obj-m += servecosys_mobile.o
+obj-$(CONFIG_SERVECOSYS_MOBILE_MODULES) += servecsys_mobile.o
 servecsys_mobile-objs := mobile_modules.o
 
 ccflags-y := -Wall

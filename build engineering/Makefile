@@ -116,33 +116,43 @@ kernel: kernel-src check-kernel-src kernel-patch
 	@echo "[STEP] 配置内核 ($(KERNEL_DEFCONFIG))..."
 	@cp "$(KERNEL_CORE)/servecosys_defconfig" "$(LINUX_SRC)/.config"
 	@$(MAKE) -C "$(LINUX_SRC)" olddefconfig
+	@echo "  [DIAG] .config 中的 SERVECOSYS 符号:"
+	@grep '^CONFIG_SERVECOSYS' "$(LINUX_SRC)/.config" || true
+	@test "$$(grep -c '^CONFIG_SERVECOSYS_CORE=y' "$(LINUX_SRC)/.config")" -ge 1 || { \
+		echo "[ERROR] CONFIG_SERVECOSYS_CORE 未启用——Kconfig 挂接未生效，请查看上方 apply_kernel_patch 诊断"; \
+		exit 1; \
+	}
 	@echo "[STEP] 编译内核 bzImage..."
 	@$(MAKE) -C "$(LINUX_SRC)" -j$$(nproc) bzImage
 	@mkdir -p "$(OUT_DIR)"
 	@cp "$(LINUX_SRC)/arch/x86/boot/bzImage" "$(OUT_DIR)/vmlinuz"
 	@echo "[OK] 内核完成: $(OUT_DIR)/vmlinuz"
 
-# ---- 编译内核模块（仅产品指定的模块集） ----
-# 模块源码由 apply_kernel_patch 同步进内核树 kernel/servecosys/modules/
-# 在树内（无空格路径）以 kbuild M= 方式构建
+# ---- 编译内核模块（guard 已内建进内核；probe/pc/mobile 为可插拔 .ko） ----
+# 逐个 M= 指向模块目录，各自独立构建（仅自身 obj-m，不触发整树 defconfig 驱动）
 .PHONY: modules
 modules: kernel
 	@echo "[STEP] 编译内核模块 (产品: $(PRODUCT), 模块集: $(PRODUCT_MODULES))..."
-	@for m in $(PRODUCT_MODULES); do \
+	@for m in $$(echo "$(PRODUCT_MODULES)" | tr ' ' '\n'); do \
 		if [ "$$m" = "guard" ]; then \
-			echo "  guard (内建进内核，跳过外建)"; \
+			echo "  guard (已内建进内核映像)"; \
 			continue; \
 		fi; \
 		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
 			echo "  -> $$m"; \
 			$(MAKE) -C "$(LINUX_SRC)" M="$(LINUX_SRC)/kernel/servecosys/modules/$$m" modules || exit 1; \
 		else \
-			echo "  [WARN] 模块 $$m 未同步进内核树，跳过"; \
+			echo "  [WARN] 模块 $$m 未同步，跳过"; \
 		fi; \
 	done
 	@mkdir -p "$(OUT_DIR)/modules"
 	@find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \;
-	@echo "[OK] 内核模块完成: $(OUT_DIR)/modules/"
+	@n=$$(find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' 2>/dev/null | wc -l); \
+	echo "[OK] 内核模块完成: $(OUT_DIR)/modules/ ($$n 个 .ko)"; \
+	if [ "$$n" -eq 0 ]; then \
+		echo "[ERROR] 未产出任何 .ko——检查 CONFIG_SERVECOSYS_PROBE/PC/MOBILE 是否=m 及模块能否编译"; \
+		exit 1; \
+	fi
 
 # ---- 组装 initramfs ----
 .PHONY: initramfs

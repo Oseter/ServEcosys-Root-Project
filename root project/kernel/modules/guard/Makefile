@@ -7,7 +7,7 @@
 # 内建：CONFIG_SERVECOSYS_GUARD=y → obj-y（链接进内核映像）
 # 外建：make -C <linux-src> M=$(pwd) modules（需内核已预编译）
 
-obj-$(CONFIG_SERVECOSYS_GUARD) += servecosys_guard.o
+obj-$(CONFIG_SERVECOSYS_GUARD) += servecsys_guard.o
 servecsys_guard-objs := guard.o
 
 ccflags-y := -Wall -Wextra

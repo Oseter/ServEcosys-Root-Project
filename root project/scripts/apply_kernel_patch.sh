@@ -51,6 +51,7 @@ for m in guard probe pc mobile; do
     cp "$KERNEL_MODULES_SRC/$m"/{Makefile,Kconfig} "$CORE_DST/modules/$m/" 2>/dev/null || true
 done
 cp "$KERNEL_MODULES_SRC/Kconfig" "$CORE_DST/modules/Kconfig"
+cp "$KERNEL_MODULES_SRC/Makefile" "$CORE_DST/modules/Makefile"
 
 # ---- 3. 挂接 Kconfig（source 进 kernel/ 的 Kconfig 树入口） ----
 KERNEL_KCONFIG="$LINUX_SRC/kernel/Kconfig"
@@ -89,3 +90,13 @@ else
 fi
 
 echo "[OK] 内核中央与模块集成完成"
+
+# ---- 6. 诊断输出：确认同步与挂接确实生效 ----
+echo "[DIAG] 同步结果（kernel/servecosys 目录树）:"
+find "$CORE_DST" -maxdepth 3 -type f | sed "s|$LINUX_SRC/||" | sort
+echo "[DIAG] kernel/Kconfig 末尾 3 行:"
+tail -n 3 "$KERNEL_KCONFIG"
+echo "[DIAG] kernel/servecosys/Kconfig 末尾 2 行:"
+tail -n 2 "$CORE_KCONFIG_DST"
+echo "[DIAG] kernel/Makefile 末尾 2 行:"
+tail -n 2 "$KERNEL_MAKEFILE"

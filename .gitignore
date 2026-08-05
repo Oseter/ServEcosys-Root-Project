@@ -18,6 +18,9 @@ bzImage
 Image.gz
 initramfs*.cpio.gz
 
+# Linux kernel source tree (space-free location at repo root)
+/kernel-src/
+
 # IDE / Editor
 .vscode/
 .idea/

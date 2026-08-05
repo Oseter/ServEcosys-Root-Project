@@ -9,8 +9,8 @@
 # 关键变量:
 #   PRODUCT   = servecosys_pc | servecosys_mobile | servecosys_qemu
 #   DEVICE    = qemu-x86_64 | reference-x86_64
-#   LINUX_SRC = 内核源码树路径 (默认 ../root project/kernel/linux-src)
-#   OUT_DIR   = 构建输出目录 (默认 build)
+#   LINUX_SRC = 内核源码树路径 (默认 ../kernel-src, 无空格路径)
+#   OUT_DIR   = 构建输出目录 (默认 ../root project/build)
 #   ARCH      = x86_64 | arm64
 #
 
@@ -21,7 +21,9 @@ DEVICE  ?= qemu-x86_64
 
 # 操作系统底层架构源码根（与工程组织并列，位于上层）
 ROOT_PROJECT ?= ../root project
-LINUX_SRC ?= $(ROOT_PROJECT)/kernel/linux-src
+REPO_ROOT    ?= ..
+# 内核源码必须放在无空格的路径（Linux kbuild 拒绝在含空格目录下编译）
+LINUX_SRC ?= $(REPO_ROOT)/kernel-src
 # 输出目录统一到 root project/build，与 scripts/ 下所有构建脚本的默认位置一致
 OUT_DIR ?= $(ROOT_PROJECT)/build
 
@@ -62,7 +64,7 @@ help:
 	@echo "变量:"
 	@echo "  PRODUCT   产品名   (默认 servecosys_qemu)"
 	@echo "  DEVICE    设备名   (默认 qemu-x86_64)"
-	@echo "  LINUX_SRC 内核源码树 (默认 ../root project/kernel/linux-src)"
+	@echo "  LINUX_SRC 内核源码树 (默认 ../kernel-src, 无空格)"
 	@echo "  OUT_DIR   输出目录 (默认 ../root project/build)"
 
 # ---- 检查内核源码存在性 ----
@@ -70,7 +72,7 @@ help:
 check-kernel-src:
 	@if [ ! -d "$(LINUX_SRC)" ]; then \
 		echo "[ERROR] 内核源码树不存在: $(LINUX_SRC)"; \
-		echo "  请先运行: make kernel-src  或  git clone https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git $(LINUX_SRC)"; \
+		echo "  请先运行: make kernel-src"; \
 		exit 1; \
 	fi
 
@@ -81,7 +83,7 @@ kernel-src:
 	@echo "[STEP] 获取 Linux $(KERNEL_VER) LTS 源码..."
 	@if [ ! -d "$(LINUX_SRC)" ]; then \
 		mkdir -p "$(dir $(LINUX_SRC))"; \
-		git clone --depth 1 --branch "v$(KERNEL_VER).y" \
+		git clone --depth 1 --branch "linux-$(KERNEL_VER).y" \
 			https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$(LINUX_SRC)"; \
 		if [ ! -d "$(LINUX_SRC)" ]; then \
 			echo "[WARN] git 克隆失败，尝试 tarball 下载..."; \
@@ -121,19 +123,21 @@ kernel: kernel-src check-kernel-src kernel-patch
 	@echo "[OK] 内核完成: $(OUT_DIR)/vmlinuz"
 
 # ---- 编译内核模块（仅产品指定的模块集） ----
+# 模块源码由 apply_kernel_patch 同步进内核树 kernel/servecosys/modules/
+# 在树内（无空格路径）以 kbuild M= 方式构建
 .PHONY: modules
-modules: check-kernel-src
+modules: kernel
 	@echo "[STEP] 编译内核模块 (产品: $(PRODUCT), 模块集: $(PRODUCT_MODULES))..."
 	@for m in $(PRODUCT_MODULES); do \
-		if [ -f "$(KERNEL_MODULES)/$$m/Makefile" ]; then \
+		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
 			echo "  -> $$m"; \
-			$(MAKE) -C "$(LINUX_SRC)" M="$(KERNEL_MODULES)/$$m" modules || exit 1; \
+			$(MAKE) -C "$(LINUX_SRC)" M="$(LINUX_SRC)/kernel/servecosys/modules/$$m" modules || exit 1; \
 		else \
-			echo "  [WARN] 模块 $$m 无 Makefile，跳过"; \
+			echo "  [WARN] 模块 $$m 未同步进内核树，跳过"; \
 		fi; \
 	done
 	@mkdir -p "$(OUT_DIR)/modules"
-	@find "$(KERNEL_MODULES)" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \;
+	@find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \;
 	@echo "[OK] 内核模块完成: $(OUT_DIR)/modules/"
 
 # ---- 组装 initramfs ----

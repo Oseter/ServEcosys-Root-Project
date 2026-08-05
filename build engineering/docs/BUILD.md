@@ -83,7 +83,7 @@ make qemu
 |------|--------|------|
 | `PRODUCT` | `servecosys_qemu` | 产品（pc / mobile / qemu） |
 | `DEVICE` | `qemu-x86_64` | 设备 |
-| `LINUX_SRC` | `../root project/kernel/linux-src` | 内核源码树 |
+| `LINUX_SRC` | `../kernel-src` | 内核源码树（无空格路径，kbuild 要求） |
 | `OUT_DIR` | `../root project/build` | 输出目录 |
 
 ## 3. 内核集成说明

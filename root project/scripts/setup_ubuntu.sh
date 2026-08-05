@@ -59,7 +59,7 @@ apt-get install -y git wget curl
 
 # ============ initramfs ============
 log_step "安装 initramfs / busybox 工具..."
-apt-get install -y busybox busybox-static
+apt-get install -y busybox-static
 
 # ============ ISO 打包 ============
 log_step "安装 ISO 打包工具 (xorriso/mtools/dosfstools)..."

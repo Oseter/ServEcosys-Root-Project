@@ -17,7 +17,7 @@ runs:
           build-essential gcc make binutils bc bison flex gawk kmod cpio file \
           libelf-dev libssl-dev libncurses-dev libfdt-dev device-tree-compiler rsync \
           git wget curl \
-          busybox busybox-static \
+          busybox-static \
           xorriso mtools dosfstools \
           grub-pc-bin grub-efi-amd64-bin grub-common \
           qemu-system-x86 ovmf \

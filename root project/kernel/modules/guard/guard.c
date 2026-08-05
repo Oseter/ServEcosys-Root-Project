@@ -129,7 +129,7 @@ static int guard_detect_cred_escalation(const struct task_struct *task)
     if (!c)
         return 0;
     if (!uid_eq(c->uid, GLOBAL_ROOT_UID) &&
-        (c->cap_effective.cap[0] & (1UL << CAP_SYS_ADMIN)))
+        cap_raised(c->cap_effective, CAP_SYS_ADMIN))
         return 1;
     return 0;
 }
@@ -185,7 +185,7 @@ static void guard_note_oops(pid_t pid)
         if (guard_mode >= 1) {
             struct task_struct *t = find_task_by_vpid(pid);
             if (t)
-                force_sig(SIGKILL, t);
+                send_sig(SIGKILL, t, 1);
         }
         rec->count = 0;
     }
@@ -216,7 +216,7 @@ static int guard_capable(const struct cred *cred,
 }
 #endif
 
-static struct security_hook_list guard_hooks[] __lsm_ro_after_init = {
+static struct security_hook_list guard_hooks[] = {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
     LSM_HOOK_INIT(capable, guard_capable),
 #endif

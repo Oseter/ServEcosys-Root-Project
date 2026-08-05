@@ -129,6 +129,10 @@ kernel: kernel-src check-kernel-src kernel-patch
 modules: kernel
 	@echo "[STEP] 编译内核模块 (产品: $(PRODUCT), 模块集: $(PRODUCT_MODULES))..."
 	@for m in $(PRODUCT_MODULES); do \
+		if [ "$$m" = "guard" ]; then \
+			echo "  guard (内建进内核，跳过外建)"; \
+			continue; \
+		fi; \
 		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
 			echo "  -> $$m"; \
 			$(MAKE) -C "$(LINUX_SRC)" M="$(LINUX_SRC)/kernel/servecosys/modules/$$m" modules || exit 1; \

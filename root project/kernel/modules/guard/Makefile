@@ -1,13 +1,14 @@
 # ServEcosys Guard - 0day detection & mitigation kernel module
 #
-# 以外部 kbuild 方式编译：
-#   make -C <linux-src> M=$(pwd) modules
-# 产物: servecosys_guard.ko
+# 注意：guard 依赖 security_add_hooks（6.6 为 __init 且未导出），
+#       只能内建进内核（CONFIG_SERVECOSYS_GUARD=y），不能作为
+#       loadable 模块单独加载。
 #
-# 也可内联进内核树编译（CONFIG_SERVECOSYS_GUARD=m 见 servecosys_defconfig）
+# 内建：CONFIG_SERVECOSYS_GUARD=y → obj-y（链接进内核映像）
+# 外建：make -C <linux-src> M=$(pwd) modules（需内核已预编译）
 
-obj-m += servecosys_guard.o
-servecosys_guard-objs := guard.o
+obj-$(CONFIG_SERVECOSYS_GUARD) += servecosys_guard.o
+servecsys_guard-objs := guard.o
 
 ccflags-y := -Wall -Wextra
 

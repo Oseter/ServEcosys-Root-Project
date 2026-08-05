@@ -206,7 +206,8 @@ CONFIG_SERVECOSYS_CORE=y
 CONFIG_SERVECOSYS_PROBE=m
 CONFIG_SERVECOSYS_PC_MODULES=m
 CONFIG_SERVECOSYS_MOBILE_MODULES=m
-CONFIG_SERVECOSYS_GUARD=m
+# guard 依赖未导出的 security_add_hooks，只能内建（=y）
+CONFIG_SERVECOSYS_GUARD=y
 
 # ============================================================================
 # 启动选项
@@ -302,8 +303,8 @@ CONFIG_SERVECOSYS_CORE_SCHED=y
 CONFIG_SERVECOSYS_CORE_MM=y
 CONFIG_SERVECOSYS_CORE_NET=y
 
-# 0day 防护模块
-CONFIG_SERVECOSYS_GUARD=m
+# 0day 防护模块（内建，因依赖未导出的 security_add_hooks）
+CONFIG_SERVECOSYS_GUARD=y
 
 # 硬件指纹（由可插拔 probe 模块承载，不在内核中央）
 CONFIG_SERVECOSYS_PROBE=m

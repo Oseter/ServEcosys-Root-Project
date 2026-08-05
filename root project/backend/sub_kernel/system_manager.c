@@ -87,6 +87,16 @@ typedef struct {
 
 static volatile sig_atomic_t running = 1;
 
+/* 经 SO_PEERCRED 获取连接对端真实 uid；失败返回 -1 */
+static int get_peer_uid(int client_fd)
+{
+    struct ucred cred;
+    socklen_t len = sizeof(cred);
+    if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
+        return -1;
+    return (int)cred.uid;
+}
+
 static void handle_signal(int sig)
 {
     running = 0;
@@ -448,16 +458,37 @@ int main(int argc, char *argv[])
         console_msg_t msg;
         ssize_t n = read(client, &msg, sizeof(msg));
         if (n > 0) {
-            /* 将命令应答写回发起方（CLI/前端），而非仅本进程 stdout */
-            int saved_stdout = dup(STDOUT_FILENO);
-            if (saved_stdout >= 0) {
-                dup2(client, STDOUT_FILENO);
-                handle_console(&msg);
-                fflush(stdout);
-                dup2(saved_stdout, STDOUT_FILENO);
-                close(saved_stdout);
+            /* 安全门槛：授权类命令只允许由与守护进程同 uid 的信任方下发
+             * （通常是系统用户/root，含 CLI 进程），防止任意沙箱进程
+             * 连上 console socket 自授权提权。 */
+            int peer_uid = get_peer_uid(client);
+            int is_sensitive = (msg.cmd == CMD_AUTHORIZE ||
+                                msg.cmd == CMD_DEAUTHORIZE ||
+                                msg.cmd == CMD_SERVICE ||
+                                msg.cmd == CMD_QUIT);
+            if (is_sensitive && peer_uid != geteuid()) {
+                /* 将命令应答写回发起方（CLI/前端），而非仅本进程 stdout */
+                int saved_stdout = dup(STDOUT_FILENO);
+                if (saved_stdout >= 0) {
+                    dup2(client, STDOUT_FILENO);
+                    fprintf(stdout, "denied: caller uid %d lacks authority\n", peer_uid);
+                    fflush(stdout);
+                    dup2(saved_stdout, STDOUT_FILENO);
+                    close(saved_stdout);
+                }
+                audit("denied console cmd=%d from uid=%d (untrusted)", (int)msg.cmd, peer_uid);
             } else {
-                handle_console(&msg);
+                /* 将命令应答写回发起方（CLI/前端），而非仅本进程 stdout */
+                int saved_stdout = dup(STDOUT_FILENO);
+                if (saved_stdout >= 0) {
+                    dup2(client, STDOUT_FILENO);
+                    handle_console(&msg);
+                    fflush(stdout);
+                    dup2(saved_stdout, STDOUT_FILENO);
+                    close(saved_stdout);
+                } else {
+                    handle_console(&msg);
+                }
             }
         }
 

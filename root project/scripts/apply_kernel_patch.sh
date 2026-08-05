@@ -17,11 +17,14 @@
 
 set -e
 
-LINUX_SRC="${1:?用法: $0 <LINUX_SRC> [PATCHES_DIR]}"
-PATCHES_DIR="${2:-kernel/patches}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-KERNEL_CORE_SRC="$(pwd)/kernel/core"
-KERNEL_MODULES_SRC="$(pwd)/kernel/modules"
+LINUX_SRC="${1:?用法: $0 <LINUX_SRC> [PATCHES_DIR]}"
+PATCHES_DIR="${2:-$PROJECT_ROOT/kernel/patches}"
+
+KERNEL_CORE_SRC="$PROJECT_ROOT/kernel/core"
+KERNEL_MODULES_SRC="$PROJECT_ROOT/kernel/modules"
 
 echo "[STEP] 集成内核中央与模块到源码树: $LINUX_SRC"
 

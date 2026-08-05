@@ -124,6 +124,20 @@ generate_secure_boot_keys() {
 
 # 主函数
 main() {
+    local FORCE=0
+
+    for arg in "$@"; do
+        case $arg in
+            -f|--force) FORCE=1 ;;
+            -h|--help)
+                echo "用法: $0 [--force]"
+                echo "  --force  非交互模式：直接覆盖已有密钥，跳过确认"
+                exit 0
+                ;;
+            *) ;;
+        esac
+    done
+
     log_info "ServEcosys Key Generation System"
     log_info "Output directory: $KEYS_DIR"
     log_info ""
@@ -134,19 +148,24 @@ main() {
     
     # 检查是否已存在密钥
     if [ -f "$KEYS_DIR/maintainer.key" ]; then
-        log_warn "Keys already exist in $KEYS_DIR"
-        echo ""
-        echo "Existing keys:"
-        ls -la "$KEYS_DIR"/*.key 2>/dev/null || true
-        echo ""
-        read -p "Overwrite existing keys? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Aborted"
-            exit 0
+        if [ "$FORCE" = 1 ]; then
+            log_warn "Keys already exist - force overwrite"
+            rm -f "$KEYS_DIR"/*
+        else
+            log_warn "Keys already exist in $KEYS_DIR"
+            echo ""
+            echo "Existing keys:"
+            ls -la "$KEYS_DIR"/*.key 2>/dev/null || true
+            echo ""
+            read -p "Overwrite existing keys? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_info "Aborted"
+                exit 0
+            fi
+            log_warn "Removing existing keys..."
+            rm -f "$KEYS_DIR"/*
         fi
-        log_warn "Removing existing keys..."
-        rm -f "$KEYS_DIR"/*
     fi
     
     # 生成密钥对
@@ -176,10 +195,14 @@ main() {
     
     # 5. Secure Boot 密钥（可选）
     echo ""
-    read -p "Generate Secure Boot keys? (y/N) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        generate_secure_boot_keys
+    if [ "$FORCE" = 1 ]; then
+        log_info "Skipping Secure Boot keys (non-interactive mode)"
+    else
+        read -p "Generate Secure Boot keys? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            generate_secure_boot_keys
+        fi
     fi
     
     # 显示生成的密钥

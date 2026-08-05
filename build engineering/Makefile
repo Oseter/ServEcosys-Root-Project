@@ -3,21 +3,13 @@
 #
 # 用法:
 #   make help                          # 查看所有目标
-#   make all                           # 构建默认产品 (servecosys_qemu)
-#   make PRODUCT=servecosys_pc all     # 构建指定产品
-#   make bootloader                    # 仅编译 UEFI 引导程序
-#   make kernel                        # 仅编译内核
-#   make modules                       # 仅编译内核模块 (guard/pc/mobile/probe)
-#   make initramfs                     # 组装 initramfs
-#   make image                         # 生成可启动磁盘镜像
-#   make qemu                          # QEMU 快速启动验证
-#   make keys                          # 生成签名密钥
+#   make full                          # 一键完整构建 (密钥+内核+模块+initramfs+ISO)
 #   make clean                         # 清理构建产物
 #
 # 关键变量:
 #   PRODUCT   = servecosys_pc | servecosys_mobile | servecosys_qemu
 #   DEVICE    = qemu-x86_64 | reference-x86_64
-#   LINUX_SRC = 内核源码树路径 (默认 kernel/linux-src)
+#   LINUX_SRC = 内核源码树路径 (默认 ../root project/kernel/linux-src)
 #   OUT_DIR   = 构建输出目录 (默认 build)
 #   ARCH      = x86_64 | arm64
 #
@@ -30,7 +22,8 @@ DEVICE  ?= qemu-x86_64
 # 操作系统底层架构源码根（与工程组织并列，位于上层）
 ROOT_PROJECT ?= ../root project
 LINUX_SRC ?= $(ROOT_PROJECT)/kernel/linux-src
-OUT_DIR ?= build
+# 输出目录统一到 root project/build，与 scripts/ 下所有构建脚本的默认位置一致
+OUT_DIR ?= $(ROOT_PROJECT)/build
 
 # 产品定义文件
 PRODUCTS_DIR := products
@@ -53,22 +46,24 @@ help:
 	@echo "用法: make [PRODUCT=servecosys_pc|servecosys_mobile|servecosys_qemu] [DEVICE=qemu-x86_64] <target>"
 	@echo ""
 	@echo "目标:"
-	@echo "  all         构建默认产品全部产物 (内核+模块+initramfs+镜像)"
+	@echo "  full        一键完整构建 (密钥+内核+模块+initramfs+ISO)"
+	@echo "  all         构建内核+模块+initramfs (不含 ISO)"
 	@echo "  bootloader  仅编译 UEFI 引导程序"
 	@echo "  kernel      仅编译 Linux 内核"
-	@echo "  modules     仅编译内核模块 (guard/pc/mobile/probe)"
+	@echo "  modules     仅编译内核模块 (guard/probe/pc/mobile)"
 	@echo "  initramfs   组装 initramfs"
-	@echo "  image       生成可启动磁盘镜像"
+	@echo "  iso         生成可启动 ISO 镜像"
 	@echo "  qemu        在 QEMU 中启动验证"
+	@echo "  kernel-src  获取 Linux 内核源码"
 	@echo "  keys        生成签名密钥"
-	@echo "  sign        对内核/引导程序签名"
+	@echo "  sign        对内核签名"
 	@echo "  clean       清理构建产物"
 	@echo ""
 	@echo "变量:"
 	@echo "  PRODUCT   产品名   (默认 servecosys_qemu)"
 	@echo "  DEVICE    设备名   (默认 qemu-x86_64)"
-	@echo "  LINUX_SRC 内核源码树 (默认 kernel/linux-src)"
-	@echo "  OUT_DIR   输出目录 (默认 build)"
+	@echo "  LINUX_SRC 内核源码树 (默认 ../root project/kernel/linux-src)"
+	@echo "  OUT_DIR   输出目录 (默认 ../root project/build)"
 
 # ---- 检查内核源码存在性 ----
 .PHONY: check-kernel-src
@@ -148,29 +143,45 @@ initramfs:
 	@$(ROOT_PROJECT)/scripts/build_initramfs.sh "$(OUT_DIR)" "$(INITRAMFS_DIR)"
 	@echo "[OK] initramfs 完成: $(OUT_DIR)/initramfs.cpio.gz"
 
-# ---- 生成可启动磁盘镜像 ----
-.PHONY: image
-image: kernel initramfs
-	@echo "[STEP] 生成磁盘镜像..."
-	@$(ROOT_PROJECT)/scripts/build_image.sh "$(OUT_DIR)" "$(DEVICE)"
-	@echo "[OK] 镜像完成: $(OUT_DIR)/servecosys.img"
+# ---- 生成可启动 ISO 镜像 ----
+.PHONY: iso image
+iso image: kernel initramfs
+	@echo "[STEP] 生成可启动 ISO (产品: $(PRODUCT), 设备: $(DEVICE))..."
+	@OUTPUT_ISO="$(OUT_DIR)/servecosys.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
+		INITRAMFS="$(OUT_DIR)/initramfs.cpio.gz" \
+		$(ROOT_PROJECT)/scripts/build_image.sh
+	@echo "[OK] 可启动 ISO 完成: $(OUT_DIR)/servecosys.iso"
 
 # ---- QEMU 启动验证 ----
+QEMU_ARCH ?= x86_64
 .PHONY: qemu
-qemu: image
+qemu: iso
 	@echo "[STEP] QEMU 启动验证..."
-	@$(QEMU_TEST) -k "$(OUT_DIR)/vmlinuz" -i "$(OUT_DIR)/initramfs.cpio.gz"
+	@ARCH="$(QEMU_ARCH)" $(QEMU_TEST) -a "$(QEMU_ARCH)"
+
+# ---- 一键完整构建（产出可启动 ISO） ----
+.PHONY: full
+full: keys kernel modules initramfs iso
+	@echo ""
+	@echo "============================================="
+	@echo " ServEcosys 完整构建完成"
+	@echo " 产品: $(PRODUCT) | 设备: $(DEVICE)"
+	@echo " 可启动镜像: $(OUT_DIR)/servecosys.iso"
+	@echo " 内核:       $(OUT_DIR)/vmlinuz"
+	@echo " 模块:       $(OUT_DIR)/modules/"
+	@echo " 启动测试:   make qemu"
+	@echo "============================================="
 
 # ---- 密钥与签名 ----
 .PHONY: keys
 keys:
-	@$(ROOT_PROJECT)/scripts/generate_keys.sh
+	@$(ROOT_PROJECT)/scripts/generate_keys.sh --force
 
 .PHONY: sign
 sign: keys
 	@echo "[STEP] 签名内核镜像..."
 	@if [ -f "$(OUT_DIR)/vmlinuz" ]; then \
-		openssl dgst -sha256 -sign scripts/keys/maintainer.key \
+		openssl dgst -sha256 -sign $(ROOT_PROJECT)/scripts/keys/maintainer.key \
 			-out "$(OUT_DIR)/vmlinuz.sig" "$(OUT_DIR)/vmlinuz" && \
 		echo "[OK] 签名完成: $(OUT_DIR)/vmlinuz.sig"; \
 	else \
@@ -184,6 +195,7 @@ all: kernel modules initramfs
 	@echo "============================================="
 	@echo " ServEcosys 构建完成 (产品: $(PRODUCT), 设备: $(DEVICE))"
 	@echo " 产物目录: $(OUT_DIR)/"
+	@echo " 完整可启动镜像: make full"
 	@echo "============================================="
 
 # ---- 清理 ----

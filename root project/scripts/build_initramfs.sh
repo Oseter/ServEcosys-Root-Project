@@ -25,7 +25,22 @@ mkdir -p "$OUT_DIR"
 
 # 1. 复制骨架
 cp -a "$INITRAMFS_SRC/." "$STAGING/"
-mkdir -p "$STAGING/bin" "$STAGING/sbin" "$STAGING/lib/modules"
+mkdir -p "$STAGING/bin" "$STAGING/sbin" "$STAGING/lib/modules" "$STAGING/dev" "$STAGING/proc" "$STAGING/sys" "$STAGING/tmp"
+
+# 1.1 嵌入静态 busybox（提供 sh/mount/cp/switch_root 等必备工具）
+BUSYBOX_BIN="$(command -v busybox 2>/dev/null || echo /bin/busybox)"
+if [ -f "$BUSYBOX_BIN" ]; then
+    echo "[initramfs]   嵌入 busybox: $BUSYBOX_BIN"
+    cp -L "$BUSYBOX_BIN" "$STAGING/bin/busybox"
+    chmod +x "$STAGING/bin/busybox"
+    ( cd "$STAGING/bin" && ln -sf busybox sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead 2>/dev/null || "$STAGING/bin/busybox" --install -s "$STAGING/bin" )
+    # /sbin/init 保留骨架 init；busybox init 需要的 applets 也放 /sbin
+    ( cd "$STAGING/sbin" && for a in init switch_root modprobe; do ln -sf ../bin/busybox "$a" 2>/dev/null || true; done )
+else
+    echo "[initramfs]   [WARN] 未找到 busybox，initramfs 将缺少用户态工具"
+fi
+
+# 1.2 骨架根目录符号链接（/sbin/init -> ../bin/... 由 init 内部处理）
 
 # 2. 打入系统集成层（live OS 模式依赖 /system）
 if [ -d "$PROJECT_ROOT/system" ]; then

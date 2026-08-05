@@ -46,7 +46,7 @@ else
     log "[ERROR] SED gate failed - booting into degraded maintenance console"
 fi
 
-log "ServEcosys boot complete"
+log "=== 概念OS (Concept OS) boot complete ==="
 sed_status() {
     for d in permission_arbiter system_manager ipc_bus hal_manager oipes_client; do
         p="$RUN_DIR/$d.pid"

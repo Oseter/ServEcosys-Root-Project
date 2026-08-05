@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# ServEcosys UID bootstrap
+# 概念OS (Concept OS) UID bootstrap - user-facing layer of ServEcosys
 #
 # Starts the Frontend Interaction Domain (.ssle services) only after the
 # SED security gate (permission_arbiter + system_manager) is authoritative.
@@ -16,7 +16,7 @@
 BIN=/system/frontend/bin
 MGR=/system/backend/bin/system_manager.smle
 
-log "=== UID bootstrap ==="
+log "=== 概念OS (Concept OS) UID bootstrap ==="
 
 # Security gate: UI must never render before the authority services are up
 if [ ! -e "$RUN_DIR/permission_arbiter.pid" ] || [ ! -e "$RUN_DIR/system_manager.pid" ]; then

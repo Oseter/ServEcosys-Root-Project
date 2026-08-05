@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <signal.h>
@@ -47,12 +48,18 @@ static int load_token(void)
         return -1;
     }
 
-    fscanf(f, "%4095s%4095s%ld",
-           auth_token.access_token, auth_token.refresh_token,
-           &auth_token.expires_at);
-    auth_token.is_valid = (auth_token.expires_at > time(NULL));
+    int n = fscanf(f, "%4095s%4095s%ld",
+                   auth_token.access_token, auth_token.refresh_token,
+                   &auth_token.expires_at);
     fclose(f);
 
+    if (n != 3) {
+        fprintf(stdout, "[OIPES] Stored token corrupt, ignoring\n");
+        memset(&auth_token, 0, sizeof(auth_token));
+        return -1;
+    }
+
+    auth_token.is_valid = (auth_token.expires_at > time(NULL));
     fprintf(stdout, "[OIPES] Token loaded (expires: %s)",
             auth_token.is_valid ? "valid" : "expired");
     return auth_token.is_valid ? 0 : -1;
@@ -60,6 +67,15 @@ static int load_token(void)
 
 static int save_token(void)
 {
+    /* 首次写入前确保目录存在，否则 fopen("w") 会静默失败 */
+    char dir[256];
+    snprintf(dir, sizeof(dir), "%s", TOKEN_PATH);
+    char *slash = strrchr(dir, '/');
+    if (slash) {
+        *slash = 0;
+        mkdir(dir, 0700);
+    }
+
     FILE *f = fopen(TOKEN_PATH, "w");
     if (!f) return -1;
 
@@ -163,6 +179,22 @@ static int authenticate(void)
     return -1;
 }
 
+static void json_escape(const char *src, char *dst, size_t dst_size)
+{
+    size_t i = 0, o = 0;
+    for (; src[i] && o + 6 < dst_size; i++) {
+        switch (src[i]) {
+            case '"':  dst[o++] = '\\'; dst[o++] = '"';  break;
+            case '\\': dst[o++] = '\\'; dst[o++] = '\\'; break;
+            case '\n': dst[o++] = '\\'; dst[o++] = 'n';  break;
+            case '\r': dst[o++] = '\\'; dst[o++] = 'r';  break;
+            case '\t': dst[o++] = '\\'; dst[o++] = 't';  break;
+            default:   dst[o++] = src[i];                 break;
+        }
+    }
+    dst[o] = 0;
+}
+
 static int ai_inference(const char *model, const char *prompt, char *result, size_t result_size)
 {
     if (!auth_token.is_valid) {
@@ -170,10 +202,15 @@ static int ai_inference(const char *model, const char *prompt, char *result, siz
         return -1;
     }
 
+    char esc_model[256];
+    char esc_prompt[2048];
+    json_escape(model, esc_model, sizeof(esc_model));
+    json_escape(prompt, esc_prompt, sizeof(esc_prompt));
+
     char body[4096];
     snprintf(body, sizeof(body),
              "{\"model\":\"%s\",\"prompt\":\"%s\",\"max_tokens\":512}",
-             model, prompt);
+             esc_model, esc_prompt);
 
     return http_request("POST", "/ai/inference", body, result, result_size);
 }

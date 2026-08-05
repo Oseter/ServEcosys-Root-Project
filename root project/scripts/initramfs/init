@@ -104,6 +104,34 @@ if [ -z "$ROOT_DEV" ]; then
 fi
 
 if [ -z "$ROOT_DEV" ]; then
+    # 概念OS live 模式兜底：
+    # ISO 介质上没有 btrfs 根，但 initramfs 自带了完整 system/ 层与
+    # .smle/.ssle 产物。在 tmpfs 上重建根，直接切到 /sbin/init -> /system/sysinit，
+    # 使概念OS 能从 live ISO 真启动（无需外部磁盘）。
+    echo "[4/7] No btrfs root found - falling back to live OS mode"
+    if [ -d /system ] && [ -x /system/sysinit ]; then
+        echo "  Live system layer found in initramfs"
+        echo "  Building tmpfs root at /live..."
+        mkdir -p /live
+        mount -t tmpfs tmpfs /live || { echo "  [ERROR] cannot mount tmpfs"; exec /bin/sh; }
+
+        echo "  Copying system layer..."
+        cp -a /system /live/system 2>/dev/null || { echo "  [ERROR] copy /system failed"; exec /bin/sh; }
+        for d in proc sys dev run tmp sbin bin; do mkdir -p "/live/$d"; done
+
+        # /sbin/init -> /system/sysinit（tmpfs 支持符号链接）
+        ln -sf /system/sysinit /live/sbin/init
+        chmod +x /live/system/sysinit /live/system/*.sh 2>/dev/null || true
+
+        # 移动伪文件系统到新根
+        for m in proc sys dev run; do
+            mount --move "/$m" "/live/$m" 2>/dev/null || true
+        done
+
+        echo "  Executing switch_root -> /sbin/init (concept OS live)"
+        exec switch_root /live /sbin/init
+    fi
+
     echo "[ERROR] No Btrfs root device found!"
     echo "  Available block devices:"
     ls -la /dev/[s,n,m,v,x]d* 2>/dev/null || echo "  (none)"

@@ -179,7 +179,8 @@ generate_initramfs() {
         cp "$(which busybox)" "$initramfs_src/bin/"
         cd "$initramfs_src/bin"
         # 创建常用命令链接
-        for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg; do
+        for cmd in sh mount mkdir cat ls cp mv rm modprobe insmod dmesg \
+                   mountpoint setsid date sleep; do
             ln -sf busybox "$cmd" 2>/dev/null || true
         done
     else
@@ -187,10 +188,15 @@ generate_initramfs() {
         # 创建最小化 init 脚本
         cat > "$initramfs_src/init" << 'INIT_EOF'
 #!/bin/sh
-echo "ServEcosys initramfs"
+echo "概念OS (Concept OS) initramfs"
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs tmpfs /run
+if [ -x /system/sysinit ]; then
+    echo "Live system layer found - switching to concept OS"
+    exec switch_root / /sbin/init
+fi
 echo "Waiting for root device..."
 sleep 2
 exec /sbin/init
@@ -206,11 +212,64 @@ sysfs /sys sysfs defaults 0 0
 devtmpfs /dev devtmpfs defaults 0 0
 FSTAB_EOF
     
-    # 打包
+# 打包
+    bundle_system_layer
     cd "$initramfs_src"
     find . | cpio -H newc -o 2>/dev/null | gzip > "$initramfs_out"
-    
+
     log_info "initramfs generated: $initramfs_out ($(ls -lh $initramfs_out | awk '{print $5}'))"
+}
+
+# 把 system 集成层 + 已编译的 .smle/.ssle/selinux 打进 initramfs，
+# 使无 btrfs 根的 live ISO 也能引导到概念OS(/system/sysinit)
+bundle_system_layer() {
+    log_step "Bundling system layer + daemons into initramfs..."
+
+    local initramfs_src="$PROJECT_ROOT/scripts/initramfs"
+
+    # 1. 系统集成层（sysinit / bootstrap / lib.sh）
+    if [ -d "$PROJECT_ROOT/system" ]; then
+        rm -rf "$initramfs_src/system"
+        cp -r "$PROJECT_ROOT/system" "$initramfs_src/system"
+        chmod +x "$initramfs_src/system/sysinit" \
+                "$initramfs_src/system/"*.sh 2>/dev/null || true
+        ln -sf /system/sysinit "$initramfs_src/sbin/init"
+        log_info "  system/ bundled, /sbin/init -> /system/sysinit"
+    else
+        log_warn "  system/ not found; initramfs will lack a usable init"
+    fi
+
+    # 2. SED 后端 .smle
+    if [ -d "$OUTPUT_DIR/sed" ]; then
+        mkdir -p "$initramfs_src/system/backend/bin"
+        cp "$OUTPUT_DIR/sed/"*.smle "$initramfs_src/system/backend/bin/" 2>/dev/null || true
+        log_info "  SELinux backend .smle bundled"
+    fi
+
+    # 3. UID 前端 .ssle
+    if [ -d "$OUTPUT_DIR/uid" ]; then
+        mkdir -p "$initramfs_src/system/frontend/bin"
+        cp "$OUTPUT_DIR/uid/"*.ssle "$initramfs_src/system/frontend/bin/" 2>/dev/null || true
+        log_info "  UID frontend .ssle bundled"
+    fi
+
+    # 4. SELinux 策略
+    if [ -d "$OUTPUT_DIR/selinux" ]; then
+        mkdir -p "$initramfs_src/system/backend/etc/selinux"
+        cp "$OUTPUT_DIR/selinux/"* "$initramfs_src/system/backend/etc/selinux/" 2>/dev/null || true
+        log_info "  SELinux policy bundled"
+    fi
+
+    # 5. 目录结构 + build.info
+    mkdir -p "$initramfs_src/system"/{app-data,backend/bin,backend/etc/selinux,frontend/bin}
+    {
+        echo "概念OS (Concept OS) - ServEcosys 系标准概念化呈现"
+        echo "Version: 0.1.0 'Genesis'"
+        echo "Build: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Arch: x86_64"
+    } > "$initramfs_src/system/build.info"
+
+    log_info "  system layer bundled"
 }
 
 # 生成密钥对

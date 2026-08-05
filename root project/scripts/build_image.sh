@@ -92,12 +92,14 @@ prepare_iso_dir() {
     fi
 
     # 安装 system 集成层（真正的 /sbin/init + 启动脚本）
+    # 注意：ISO9660 不支持符号链接，这里用实拷贝 + 顶层副本
     if [ -d "$PROJECT_ROOT/system" ]; then
         cp -r "$PROJECT_ROOT/system/." "$ISODIR/system/"
         chmod +x "$ISODIR"/system/sysinit "$ISODIR"/system/*.sh 2>/dev/null || true
-        ln -sf /system/sysinit "$ISODIR/sbin/init"
-        ln -sf /system/sysinit "$ISODIR/init"
-        log_info "  System init layer: /sbin/init -> /system/sysinit"
+        mkdir -p "$ISODIR/sbin"
+        cp "$ISODIR/system/sysinit" "$ISODIR/sbin/init"
+        cp "$ISODIR/system/sysinit" "$ISODIR/init"
+        log_info "  System init layer: /sbin/init <- /system/sysinit"
     else
         log_warn "  system/ layer not found - ISO will lack a usable init"
     fi

@@ -2,50 +2,35 @@
 
 > 最小化核心 + 可插拔设备模块
 
-## 设计原则
+## 内核中央（原子化）
 
-**内核中央仅保留：**
-1. ✅ 进程调度（CFS + RT）
-2. ✅ 内存管理（分页/虚拟内存/THP）
-3. ✅ 网络协议栈（IPv4/IPv6/TCP/UDP）
-4. ✅ 核心安全钩子（LSM/SELinux）
+**内核中央只包含内核最基础的功能，每个基础功能是一个原子：**
+
+| 原子 | 文件 | 职责 |
+|------|------|------|
+| 入口 | `main.c` | 内核中央初始化序列编排 |
+| 进程调度 | `sched.c` | CFS + RT 调度基础 |
+| 内存管理 | `mm.c` | 分页 / 虚拟内存 / THP / KSM |
+| 网络协议栈 | `net.c` | IPv4/IPv6 双栈、TCP/UDP |
+
+**原则：**
+1. 每个基础功能是一个原子（独立源文件），原子间通过 `core.h` 暴露的
+   `servecsys_<atom>_init()` 接口衔接。
+2. `main.c` 是内核中央入口，负责在 `early_initcall` 中按依赖顺序
+   编排各原子（内存 → 调度 → 网络）。
+3. 设备驱动、安全防护等能力由可插拔模块承载，不入内核中央。
 
 **设备驱动全部剥离为可插拔模块：**
 - 📦 `kernel/modules/pc/` - PC 设备适配模块集
 - 📦 `kernel/modules/mobile/` - 移动设备适配模块集
 - 📦 `kernel/modules/probe/` - 硬件指纹探测模块
+- 📦 `kernel/modules/guard/` - 0day 检测与拦截模块
 - 📦 `kernel/modules/iot/` - IoT 设备（待实现）
 - 📦 `kernel/modules/embedded/` - 嵌入式设备（待实现）
 
 ---
 
-## 架构对比
-
-### ❌ 传统 Linux 发行版
-
-```
-┌─────────────────────────────────────┐
-│           Linux Kernel              │
-│  ┌─────────────────────────────┐    │
-│  │ 调度器 + 内存 + 网络         │    │
-│  │ + 大量设备驱动（内置）       │    │
-│  │   - GPU 驱动                 │    │
-│  │   - 网络驱动                 │    │
-│  │   - 存储驱动                 │    │
-│  │   - USB 驱动                 │    │
-│  │   - ...                      │    │
-│  └─────────────────────────────┘    │
-│           + SELinux (可选)          │
-└─────────────────────────────────────┘
-```
-
-**问题：**
-- 内核臃肿（数百 MB）
-- 启动慢（全量硬件探测）
-- 安全边界模糊（驱动与核心混在一起）
-- 难以适配多设备（PC/移动/IoT 打包在一起）
-
----
+## 结构
 
 ### ✅ ServEcosys 架构
 
@@ -53,12 +38,9 @@
 ┌─────────────────────────────────────┐
 │        ServEcosys Kernel Core       │
 │  ┌─────────────────────────────┐    │
-│  │ 调度器 (CFS + RT)           │    │
-│  │ 内存管理 (分页/THP/KSM)     │    │
-│  │ 网络协议栈 (IPv4/IPv6)      │    │
-│  │ 安全钩子 (LSM/SELinux)      │    │
-│  │ 硬件指纹接口                │    │
-│  │ 权限阶梯 (0-11 级)           │    │
+│  │ 原子[sched] 进程调度         │    │
+│  │ 原子[mm]    内存管理         │    │
+│  │ 原子[net]   网络协议栈       │    │
 │  └─────────────────────────────┘    │
 └─────────────────────────────────────┘
               │
@@ -87,9 +69,11 @@
 
 ---
 
-## 核心子系统详解
+## 原子详解
 
-### 1. 进程调度
+> 内核中央只包含内核最基础的功能，每个基础功能是一个原子。
+
+### 原子 1. 进程调度（`sched.c`）
 
 **基于 CFS (Completely Fair Scheduler)**
 
@@ -101,11 +85,11 @@
 - 动态优先级调整
 ```
 
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L58-L72)
+**代码位置：** [`kernel/core/sched.c`](sched.c)
 
 ---
 
-### 2. 内存管理
+### 原子 2. 内存管理（`mm.c`）
 
 **分页虚拟内存系统**
 
@@ -118,11 +102,11 @@
 - 内核同页合并（KSM）
 ```
 
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L75-L87)
+**代码位置：** [`kernel/core/mm.c`](mm.c)
 
 ---
 
-### 3. 网络协议栈
+### 原子 3. 网络协议栈（`net.c`）
 
 **最小化双栈支持**
 
@@ -139,77 +123,28 @@
 - 特殊协议（IPX, Appletalk）
 ```
 
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L90-L105)
+**代码位置：** [`kernel/core/net.c`](net.c)
 
 ---
 
-### 4. 核心安全钩子（LSM）
+### 入口（`main.c`）
 
-**SELinux 强制集成**
+**内核中央初始化序列编排**
 
 ```c
-// LSM 钩子
-- capable()          - 进程权限检查
-- file_permission()  - 文件访问控制
-- bprm_check()       - 可执行文件验证
-- socket_create()    - 网络访问控制
-
-// SELinux 上下文
-- sys_dom_t         - 后端安全域 (SED)
-- uid_dom_t         - 前端交互域 (UID)
-- app_sandbox_t     - 应用沙箱
+// 初始化顺序（按依赖关系）
+servecsys_mm_init()      // 内存管理（最早）
+servecsys_sched_init()   // 进程调度
+servecsys_net_init()     // 网络协议栈
 ```
 
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L108-L167)
+**代码位置：** [`kernel/core/main.c`](main.c)
 
 ---
 
-### 5. 硬件指纹管理
-
-**快速启动支持**
-
-```c
-// 功能
-1. 首次启动：生成硬件指纹（SHA256）
-   - CPU/芯片组/内存配置
-   - PCIe 设备列表
-   - 存储控制器
-
-2. 后续启动：读取缓存指纹
-   - 跳过全量硬件探测
-   - 仅加载所需模块
-   - 启动时间缩短 50-70%
-
-3. 硬件变更检测：
-   - 指纹不匹配 → 重新探测
-   - 自动加载新驱动模块
-```
-
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L20-L55)
-
----
-
-### 6. 权限阶梯系统（0-11 级）
-
-**全栈权限控制**
-
-```c
-级别  名称            说明
-0     READONLY        只读/只写/只执行
-1     SANDBOX         应用沙盒
-2     USER            普通用户/系统应用
-3     DEBUG           进阶调试
-4     BL_UNLOCK       BL 解锁/特权文件
-5     ROOT_SPLIT      Root 分能力/自定义恢复
-6     MODULE_ROOT     模块加载 Root
-7     KERNEL_ROOT     内核加载 Root
-8     SELINUX         SELinux 控制（共管）
-9     KMOD_LOAD       内核模块加载
-10    CUSTOM_KERNEL   自定义内核
-11    BOOTLOADER      引导加载程序/启动链（共管）
-```
-
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L170-L220)
+> 说明：核心安全钩子（LSM/SELinux 强制集成）、硬件指纹管理、权限阶梯
+> 等能力不属于"内核最基础功能"，由可插拔模块与上层承载，不在内核中央。
+> 详见 `kernel/modules/` 与项目顶层文档。
 
 ---
 
@@ -221,8 +156,8 @@
 // 1. 用户空间请求（udev/systemd）
 modprobe e1000e
 
-// 2. 内核模块加载器
-servecosys_module_load("e1000e")
+// 2. 内核模块加载器（由上层安全策略承载）
+servecsys_module_load("e1000e")
   ├─ 检查权限（level >= 6）
   ├─ 验证模块签名
   ├─ 检查硬件指纹匹配
@@ -233,7 +168,8 @@ module_init(e1000e_init)
   └─ 注册 PCI 驱动、网络接口
 ```
 
-**代码位置：** [`kernel/core/main.c`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/main.c#L223-L245)
+> 说明：模块加载接口的权限检查由上层安全策略模块承载，
+> 不在内核中央（内核中央只包含最基础功能）。
 
 ---
 
@@ -242,14 +178,24 @@ module_init(e1000e_init)
 ### 最小化内置选项
 
 ```kconfig
-# 核心子系统（内置）
+# 内核中央原子（内置，obj-y）
+CONFIG_SERVECOSYS_CORE=y        # 内核中央
+CONFIG_SERVECOSYS_CORE_SCHED=y  # 原子: 进程调度
+CONFIG_SERVECOSYS_CORE_MM=y     # 原子: 内存管理
+CONFIG_SERVECOSYS_CORE_NET=y    # 原子: 网络协议栈
+
+# 内核基础能力（内核原生）
 CONFIG_SCHED_MC=y          # 多核调度
 CONFIG_TRANSPARENT_HUGEPAGE=y  # 透明大页
 CONFIG_INET=y              # IPv4
 CONFIG_IPV6=y              # IPv6
 CONFIG_SECURITY_SELINUX=y  # SELinux
 
-# 设备驱动（模块）
+# 可插拔模块（模块）
+CONFIG_SERVECOSYS_GUARD=m  # 0day 检测与拦截
+CONFIG_SERVECOSYS_PROBE=m  # 硬件指纹探测
+CONFIG_SERVECOSYS_PC_MODULES=m   # PC 设备适配
+CONFIG_SERVECOSYS_MOBILE_MODULES=m # 移动设备适配
 CONFIG_DRM=m               # 显卡
 CONFIG_E1000E=m            # Intel 网络
 CONFIG_USB_XHCI_HCD=m      # USB 3.0
@@ -257,7 +203,7 @@ CONFIG_SATA_AHCI=m         # SATA
 CONFIG_NVME=m              # NVMe
 ```
 
-**配置文件：** [`kernel/core/servecosys_defconfig`](file:///C:/Users/TT/lobsterai/project/rootproject/kernel/core/servecosys_defconfig)
+**配置文件：** [`kernel/core/servecosys_defconfig`](servecosys_defconfig)
 
 ---
 
@@ -266,11 +212,13 @@ CONFIG_NVME=m              # NVMe
 ```
 1. Bootloader 传递硬件指纹
         ↓
-2. 内核早期初始化
-   - servecosys_set_fingerprint()
-   - 调度器、内存、安全、网络
+2. 内核早期初始化（内核中央入口 main.c）
+   - 原子[mm]   内存管理
+   - 原子[sched] 进程调度
+   - 原子[net]  网络协议栈
         ↓
 3. 内核后期初始化
+   - 加载安全策略模块（guard 等）
    - 启动 SED（后端安全域）
    - 启动 UID（前端交互域）
         ↓
@@ -287,14 +235,14 @@ CONFIG_NVME=m              # NVMe
 
 ---
 
-## 性能对比
+## 性能目标
 
-| 指标 | 传统 Linux | ServEcosys | 改进 |
-|------|-----------|------------|------|
-| 内核大小 | ~300MB | ~10MB | **96%↓** |
-| 启动时间（冷启动） | ~30s | ~10s | **67%↓** |
-| 启动时间（热启动*） | ~25s | ~5s | **80%↓** |
-| 内存占用（空闲） | ~500MB | ~200MB | **60%↓** |
+| 指标 | ServEcosys 目标 |
+|------|-----------------|
+| 内核大小 | ~10MB |
+| 启动时间（冷启动） | ~10s |
+| 启动时间（热启动*） | ~5s |
+| 内存占用（空闲） | ~200MB |
 
 *热启动：使用缓存的硬件指纹，跳过全量探测
 

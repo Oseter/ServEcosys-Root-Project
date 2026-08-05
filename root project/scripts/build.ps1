@@ -1,27 +1,38 @@
 #
 # ServEcosys Kernel Build Script - PowerShell
-# 
-# 编译主内核和设备模块集 (Windows 版本)
-# 
+#
+# Windows 侧统一构建入口。实际构建由顶层 Makefile（make）执行，
+# 本脚本负责参数解析、依赖检查与 make 调用（经 WSL2 或 MSYS2）。
+#
 # 用法:
-#   .\build.ps1 -Target pc
-#   .\build.ps1 -Target mobile
-#   .\build.ps1 -Target all
+#   .\build.ps1 -Target all                    # 构建默认产品
+#   .\build.ps1 -Target kernel
+#   .\build.ps1 -Product servecosys_pc -Target all
+#   .\build.ps1 -Target qemu
 #
 
 param(
-    [ValidateSet('pc', 'mobile', 'all', 'initramfs', 'sign')]
-    [string]$Target = 'all'
+    [ValidateSet('all', 'kernel', 'modules', 'bootloader', 'initramfs',
+                 'image', 'qemu', 'keys', 'sign', 'clean', 'help')]
+    [string]$Target = 'all',
+
+    [ValidateSet('servecosys_qemu', 'servecosys_pc', 'servecosys_mobile')]
+    [string]$Product = 'servecosys_qemu',
+
+    [ValidateSet('qemu-x86_64', 'reference-x86_64')]
+    [string]$Device = 'qemu-x86_64',
+
+    [string]$LinuxSrc = 'kernel/linux-src',
+    [string]$OutDir = 'build'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
-$KernelDir = Join-Path $ProjectRoot 'kernel'
-$OutputDir = Join-Path $ProjectRoot 'build'
+$ProjectRoot = Split-Path -Parent $ScriptDir          # root project (操作系统底层架构)
+$TopRoot = Split-Path -Parent $ProjectRoot            # ServEcosys-Root-Project (顶层)
+$BuildEng = Join-Path $TopRoot 'build engineering'    # 工程组织 (统一构建入口)
 
-# 颜色输出
 function Write-LogInfo {
     param([string]$Message)
     Write-Host "[INFO] $Message" -ForegroundColor Green
@@ -37,124 +48,66 @@ function Write-LogError {
     Write-Host "[ERROR] $Message" -ForegroundColor Red
 }
 
-# 检查依赖
+# 检查 make 可用性（WSL2 或 MSYS2/MinGW）
 function Check-Dependencies {
-    Write-LogInfo "Checking dependencies..."
-    
-    $deps = @('make', 'gcc', 'git')
-    $missing = @()
-    
-    foreach ($dep in $deps) {
-        if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
-            $missing += $dep
+    Write-LogInfo "Checking build tools..."
+
+    $makeCmd = Get-Command make -ErrorAction SilentlyContinue
+    if (-not $makeCmd) {
+        # 尝试 WSL2
+        $wsl = Get-Command wsl -ErrorAction SilentlyContinue
+        if ($wsl) {
+            Write-LogInfo "Using WSL2 for make..."
+            $script:UseWsl = $true
+            return
         }
-    }
-    
-    if ($missing.Count -gt 0) {
-        Write-LogError "Missing dependencies: $($missing -join ', ')"
-        Write-LogInfo "Please install WSL2 or MinGW with Linux kernel build tools"
+        Write-LogError "未找到 make。请安装 MSYS2/MinGW 或启用 WSL2。"
         exit 1
     }
-    
-    Write-LogInfo "All dependencies OK"
+    $script:UseWsl = $false
+    Write-LogInfo "make: $($makeCmd.Source)"
 }
 
-# 编译主内核
-function Build-KernelCore {
-    Write-LogInfo "Building kernel core..."
-    
-    $coreDir = Join-Path $KernelDir 'core'
-    
-    # TODO: 配置内核编译
-    # make -C /lib/modules/$(uname -r)/build M=$coreDir modules
-    
-    Write-LogInfo "Kernel core build complete"
-}
+$script:UseWsl = $false
 
-# 编译 PC 模块集
-function Build-PCModules {
-    Write-LogInfo "Building PC modules..."
-    
-    $pcDir = Join-Path $KernelDir 'modules' 'pc'
-    
-    # TODO: 编译 PC 设备驱动模块
-    
-    Write-LogInfo "PC modules build complete"
-}
-
-# 编译移动模块集
-function Build-MobileModules {
-    Write-LogInfo "Building mobile modules..."
-    
-    $mobileDir = Join-Path $KernelDir 'modules' 'mobile'
-    
-    # TODO: 编译移动设备驱动模块
-    
-    Write-LogInfo "Mobile modules build complete"
-}
-
-# 编译硬件探测模块
-function Build-ProbeModules {
-    Write-LogInfo "Building probe modules..."
-    
-    $probeDir = Join-Path $KernelDir 'modules' 'probe'
-    
-    # TODO: 编译硬件指纹探测模块
-    
-    Write-LogInfo "Probe modules build complete"
-}
-
-# 生成 initramfs
-function Generate-Initramfs {
-    Write-LogInfo "Generating initramfs..."
-    
-    $initramfsSrc = Join-Path $ScriptDir 'initramfs'
-    $initramfsOut = Join-Path $OutputDir 'initramfs.cpio.gz'
-    
-    New-Item -ItemType Directory -Force -Path $initramfsSrc | Out-Null
-    
-    # TODO: 创建 initramfs 内容
-    
-    Write-LogInfo "initramfs generated: $initramfsOut"
-}
-
-# 主函数
-function Main {
-    Write-LogInfo "ServEcosys Kernel Build System"
-    Write-LogInfo "Target: $Target"
-    Write-LogInfo "Output: $OutputDir"
-    
-    New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-    
-    Check-Dependencies
-    
-    switch ($Target) {
-        'pc' {
-            Build-KernelCore
-            Build-PCModules
-            Build-ProbeModules
-        }
-        'mobile' {
-            Build-KernelCore
-            Build-MobileModules
-            Build-ProbeModules
-        }
-        'all' {
-            Build-KernelCore
-            Build-PCModules
-            Build-MobileModules
-            Build-ProbeModules
-        }
-        'initramfs' {
-            Generate-Initramfs
-        }
-        'sign' {
-            Write-LogInfo "Signing kernel image..."
-            # TODO: 使用共管密钥签名
+function Invoke-Make {
+    param([string]$MakeArgs)
+    if ($script:UseWsl) {
+        $wslPath = ($BuildEng -replace '\', '/').Replace('C:', '/mnt/c')
+        & wsl bash -lc "cd '$wslPath' && make $MakeArgs" 
+        if ($LASTEXITCODE -ne 0) { throw "make 失败: $MakeArgs" }
+    } else {
+        Push-Location $BuildEng
+        try {
+            & make $MakeArgs.Split(' ')
+            if ($LASTEXITCODE -ne 0) { throw "make 失败: $MakeArgs" }
+        } finally {
+            Pop-Location
         }
     }
-    
-    Write-LogInfo "Build complete!"
+}
+
+function Main {
+    Write-LogInfo "ServEcosys 构建系统 (Windows)"
+    Write-LogInfo "目标: $Target | 产品: $Product | 设备: $Device"
+
+    Check-Dependencies
+
+    $baseVars = "PRODUCT=$Product DEVICE=$Device LINUX_SRC=$LinuxSrc OUT_DIR=$OutDir"
+
+    switch ($Target) {
+        'help' {
+            Invoke-Make "help $baseVars"
+        }
+        'clean' {
+            Invoke-Make "clean $baseVars"
+        }
+        default {
+            Invoke-Make "$Target $baseVars"
+        }
+    }
+
+    Write-LogInfo "构建完成！产物目录: $OutDir/"
 }
 
 Main

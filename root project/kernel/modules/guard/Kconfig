@@ -1,0 +1,12 @@
+#
+# ServEcosys Guard - 0day 检测与拦截内核模块
+#
+
+config SERVECOSYS_GUARD
+	tristate "ServEcosys 0day 检测与拦截模块"
+	depends on SECURITY
+	default m
+	help
+	  ServEcosys 0day 防护：基于"违背最小特权 + 违背内核完整性"
+	  行为指纹，检测并拦截典型的权限提升与内核破坏利用。
+	  （cred 突变检测 / rodata 哨兵 CRC / Oops 风暴看门狗）

@@ -42,6 +42,7 @@ mknod -m 660 /dev/console c 5 1 2>/dev/null || true
 echo "[2/7] Loading kernel modules..."
 modprobe -q btrfs 2>/dev/null || echo "  [WARN] btrfs module not available (built-in?)"
 modprobe -q servecosys_probe 2>/dev/null || echo "  [WARN] servecosys_probe module not available"
+modprobe -q servecosys_guard 2>/dev/null || echo "  [WARN] servecosys_guard module not available"
 
 # ============================================
 # [3/7] Hardware fingerprint

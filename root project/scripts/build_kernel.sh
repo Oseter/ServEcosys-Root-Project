@@ -156,12 +156,35 @@ build_mobile_modules() {
 # 编译硬件探测模块
 build_probe_modules() {
     log_info "Building probe modules..."
-    
+
     cd "$KERNEL_DIR/modules/probe"
-    
+
     # TODO: 编译硬件指纹探测模块
-    
+
     log_info "Probe modules build complete"
+}
+
+# 编译 0day 防护模块（ServEcosys Guard）
+build_guard_module() {
+    log_step "Building 0day guard module..."
+
+    if [ ! -d "$KERNEL_DIR/linux-src" ]; then
+        log_warn "Linux source not found; guard module build skipped"
+        return 0
+    fi
+
+    cd "$KERNEL_DIR/modules/guard"
+
+    make -C "$KERNEL_DIR/linux-src" M="$PWD" modules 2>/dev/null || {
+        log_warn "Guard module build failed (kernel source may be incomplete); continuing"
+        return 0
+    }
+
+    if [ -f servecosys_guard.ko ]; then
+        mkdir -p "$OUTPUT_DIR/modules"
+        cp servecosys_guard.ko "$OUTPUT_DIR/modules/"
+        log_info "Guard module built: $OUTPUT_DIR/modules/servecosys_guard.ko"
+    fi
 }
 
 # 生成 initramfs
@@ -260,6 +283,13 @@ bundle_system_layer() {
         log_info "  SELinux policy bundled"
     fi
 
+    # 5. 0day 防护模块 + 模块装载（供 initramfs modprobe）
+    if [ -f "$OUTPUT_DIR/modules/servecosys_guard.ko" ]; then
+        mkdir -p "$initramfs_src/lib/modules"
+        cp "$OUTPUT_DIR/modules/servecosys_guard.ko" "$initramfs_src/lib/modules/"
+        log_info "  0day guard module bundled"
+    fi
+
     # 5. 目录结构 + build.info
     mkdir -p "$initramfs_src/system"/{app-data,backend/bin,backend/etc/selinux,frontend/bin}
     {
@@ -354,6 +384,9 @@ build_full() {
     build_pc_modules
     build_mobile_modules
     build_probe_modules
+
+    # 3.1 编译 0day 防护模块
+    build_guard_module
     
     # 4. 生成 initramfs
     generate_initramfs
@@ -416,6 +449,10 @@ main() {
             build_kernel_core
             build_mobile_modules
             build_probe_modules
+            ;;
+        guard)
+            check_dependencies
+            build_guard_module
             ;;
         all)
             check_dependencies

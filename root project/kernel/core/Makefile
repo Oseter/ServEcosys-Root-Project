@@ -1,0 +1,12 @@
+#
+# ServEcosys Kernel Core - 内核中央 Makefile
+#
+# 内核中央编译为内建（obj-y），编译进内核映像本体。
+# 由顶层内核 Makefile 通过子目录递归调用（需补丁将本目录加入
+# 内核源码树的 Kconfig/Makefile 递归链）。
+#
+
+obj-y += servecosys_core.o
+servecsys_core-y := main.o sched.o mm.o net.o
+
+ccflags-y := -Wall

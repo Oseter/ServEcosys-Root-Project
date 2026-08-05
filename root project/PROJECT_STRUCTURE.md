@@ -29,8 +29,12 @@
     │   └── tools/            # 恢复、刷写、调试工具
     ├── boot/                 # 引导启动程序链
     ├── kernel/               # 主内核文件夹
-    │   ├── core/             # 内核中央
-    │   └── modules/          # 内核模块 (pc/, mobile/, probe/, ...)
+    │   ├── core/             # 内核中央（原子化：main 入口 + sched/mm/net）
+    │   ├── patches/          # 内核源码补丁
+    │   └── modules/          # 内核模块 (guard/, probe/, pc/, mobile/, ...)
+    ├── products/             # 产品配置层 (servecsys_pc/mobile/qemu)
+    ├── devices/              # 设备配置层 (qemu-x86_64/reference-x86_64)
+    ├── docs/                 # 架构与构建文档
     ├── backend/              # 后端文件夹 (.smle)
     │   ├── sub_kernel/       # 后端子内核
     │   ├── security/         # 权限控制台与 SELinux

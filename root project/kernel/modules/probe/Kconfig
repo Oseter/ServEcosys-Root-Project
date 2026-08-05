@@ -1,0 +1,11 @@
+#
+# ServEcosys 硬件指纹探测模块
+#
+
+config SERVECOSYS_PROBE
+	tristate "ServEcosys 硬件指纹探测模块"
+	depends on DMI || PCI
+	default m
+	help
+	  ServEcosys 硬件指纹探测：采集 CPU/芯片组/PCIe/存储等硬件信息，
+	  生成 SHA256 硬件指纹，供快速启动与硬件变更检测使用。

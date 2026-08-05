@@ -1,0 +1,11 @@
+#
+# ServEcosys PC 设备适配模块集
+#
+
+config SERVECOSYS_PC_MODULES
+	tristate "ServEcosys PC 设备适配模块集"
+	depends on PCI
+	default m
+	help
+	  ServEcosys PC 设备适配：PCIe/USB/GPU/网络/音频等 PC 硬件支持。
+	  作为可插拔模块集，按需加载。

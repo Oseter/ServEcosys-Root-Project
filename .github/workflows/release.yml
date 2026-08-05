@@ -1,0 +1,47 @@
+name: Release ConceptOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/build-conceptos
+
+      - name: Create GitHub Release with ISO
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 概念OS (ConceptOS) ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          body: |
+            ## 概念OS (ConceptOS) ${{ github.ref_name }}
+
+            **ServEcosys 系操作系统标准与概念呈现**
+
+            ### 包含
+            - `ConceptOS.iso` — 可启动 ISO（UEFI / live 模式）
+            - `vmlinuz` — 内核映像
+            - `initramfs.cpio.gz` — 可启动 initramfs（内置 busybox + system 集成层）
+
+            ### 构建信息
+            - 仓库：`${{ github.repository }}`
+            - 构建提交：`${{ github.sha }}`
+            - 构建环境：GitHub Actions (ubuntu-latest)
+            - 内核：Linux 6.6 LTS（内核中央原子化 + guard 模块 + Btrfs 快照）
+          files: |
+            root project/build/ConceptOS.iso
+            root project/build/vmlinuz
+            root project/build/initramfs.cpio.gz
+          fail_on_unmatched_files: true

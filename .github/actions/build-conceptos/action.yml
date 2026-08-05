@@ -1,0 +1,35 @@
+name: Build ConceptOS
+description: Install dependencies and build the ConceptOS (概念OS) bootable ISO via the real build chain
+inputs:
+  token:
+    description: GitHub token (defaults to github.token)
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq \
+          build-essential gcc make binutils bc bison flex gawk kmod cpio file \
+          libelf-dev libssl-dev libncurses-dev libfdt-dev device-tree-compiler rsync \
+          git wget curl \
+          busybox busybox-static \
+          xorriso mtools dosfstools \
+          grub-pc-bin grub-efi-amd64-bin grub-common \
+          qemu-system-x86 ovmf \
+          openssl sbsigntool efitools
+
+    - name: Build full (内核 + 模块 + initramfs + ISO)
+      shell: bash
+      run: |
+        cd "build engineering"
+        make full
+
+    - name: Show artifacts
+      shell: bash
+      run: |
+        ls -la "root project/build/"
+        test -f "root project/build/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }

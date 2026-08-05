@@ -1,81 +1,26 @@
-name: ServEcosys
-on: [push]
+name: CI - ConceptOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xorriso mtools dosfstools fdisk btrfs-progs grub-pc-bin grub-efi-amd64-bin busybox-static cpio
-      - name: kernel
-        run: |
-          set +e
-          mkdir -p "root project/build"
-          for f in /boot/vmlinuz*; do
-            if [ -f "$f" ]; then
-              cp "$f" "root project/build/vmlinuz"
-              echo "kernel: $f"
-              break
-            fi
-          done
-          if [ ! -f "root project/build/vmlinuz" ]; then
-            sudo apt-get install -y -qq linux-image-generic 2>/dev/null || true
-            for f in /boot/vmlinuz*; do
-              if [ -f "$f" ]; then
-                cp "$f" "root project/build/vmlinuz"
-                break
-              fi
-            done
-          fi
-          test -f "root project/build/vmlinuz" || echo dummy > "root project/build/vmlinuz"
-      - name: initramfs
-        run: |
-          mkdir -p "root project/scripts/initramfs/bin"
-          cp /bin/busybox "root project/scripts/initramfs/bin/"
-          cd "root project/scripts/initramfs"
-          find . -type f | cpio -H newc -o | gzip > ../../build/initramfs.cpio.gz
-      - name: iso
-        run: |
-          cd "root project"
-          bash scripts/build_image.sh -o build/servecosys.iso -k build/vmlinuz -i build/initramfs.cpio.gz
-      - name: img
-        run: |
-          cd "root project"
-          IMG=build/servecosys.img
-          dd if=/dev/zero of=$IMG bs=1M count=256 2>/dev/null
-          parted $IMG mklabel gpt 2>/dev/null
-          parted $IMG mkpart primary fat32 1MiB 64MiB 2>/dev/null
-          parted $IMG mkpart primary btrfs 64MiB 100% 2>/dev/null
-          parted $IMG set 1 esp on 2>/dev/null
-          LOOP=$(sudo losetup --show -fP $IMG)
-          sudo mkfs.fat -F32 ${LOOP}p1 2>/dev/null
-          sudo mkfs.btrfs -f ${LOOP}p2 2>/dev/null
-          sudo mount ${LOOP}p1 /mnt
-          sudo mkdir -p /mnt/EFI/BOOT
-          sudo grub-install --target=x86_64-efi --efi-directory=/mnt --removable 2>/dev/null || true
-          sudo cp build/vmlinuz /mnt/
-          sudo cp build/initramfs.cpio.gz /mnt/
-          printf 'set default=0\nset timeout=5\nmenuentry "ServEcosys" { linux /vmlinuz console=ttyS0; initrd /initramfs.cpio.gz }\n' | sudo tee /mnt/EFI/BOOT/grub.cfg
-          sudo umount /mnt
-          sudo losetup -d $LOOP
-          ls -la $IMG
-      - name: upload
+      - uses: ./.github/actions/build-conceptos
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: images
-          path: root project/build/servecosys.*
+          name: conceptos
+          path: |
+            root project/build/ConceptOS.iso
+            root project/build/vmlinuz
+            root project/build/initramfs.cpio.gz
           compression-level: 0
-          retention-days: 90
-      - name: release
-        uses: softprops/action-gh-release@v2
-        if: success()
-        with:
-          tag_name: v0.1.0-${{ github.run_number }}
-          name: ServEcosys v0.1.0-${{ github.run_number }}
-          body: |
-            ISO + IMG for UEFI
-          files: root project/build/servecosys.*
-          fail_on_unmatched_files: false
-          make_latest: true
+          retention-days: 30

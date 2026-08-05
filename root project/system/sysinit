@@ -57,6 +57,15 @@ log "  SED:"; sed_status
 log "  UID:   display_server input_manager compositor system_ui"
 log "  Console: system_manager -> /var/run/servecosys_mgr.sock"
 
+# 启动守护进程监督器（后台，崩溃自动拉起）
+if [ -x /system/supervise.sh ]; then
+    mkdir -p "$LOG_DIR" 2>/dev/null
+    /system/supervise.sh >> "$LOG_DIR/supervise.log" 2>&1 &
+    log "supervisor started (pid $!)"
+else
+    log "[WARN] /system/supervise.sh missing; no daemon supervision"
+fi
+
 # Keep PID 1 alive; give the user a maintenance console on /dev/console
 if [ -c /dev/console ]; then
     exec setsid /bin/sh < /dev/console > /dev/console 2>&1

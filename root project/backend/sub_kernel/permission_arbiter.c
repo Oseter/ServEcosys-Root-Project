@@ -285,6 +285,13 @@ static perm_response_t handle_request(const perm_request_t *req, pid_t peer_pid)
 
     switch (req->type) {
         case REQ_CHECK_PERM: {
+            /* 只能查询自己（或管理器代查），禁止探测其他进程的权限 */
+            if (peer_pid != req->pid && peer_pid != manager_pid) {
+                resp.status = -1;
+                snprintf(resp.reason, sizeof(resp.reason),
+                         "denied (may only query self, PID %d)", peer_pid);
+                break;
+            }
             int result = check_permission(req->pid, req->target_level);
             if (result == 0) {
                 resp.status = 0;
@@ -300,6 +307,12 @@ static perm_response_t handle_request(const perm_request_t *req, pid_t peer_pid)
             break;
         }
         case REQ_GET_LEVEL:
+            if (peer_pid != req->pid && peer_pid != manager_pid) {
+                resp.status = -1;
+                snprintf(resp.reason, sizeof(resp.reason),
+                         "denied (may only query self, PID %d)", peer_pid);
+                break;
+            }
             resp.status = 0;
             resp.current_level = get_process_level(req->pid);
             snprintf(resp.reason, sizeof(resp.reason), "current level: %d",

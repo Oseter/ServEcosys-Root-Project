@@ -45,6 +45,11 @@ start_daemon() {
     fi
 
     mkdir -p "$RUN_DIR" "$LOG_DIR" 2>/dev/null
+
+    # Clear stale runstate from a previous boot/crash so wait_ready() cannot
+    # be fooled into thinking the daemon is already up.
+    rm -f "$pidfile"
+
     "$exe" >> "$LOG_DIR/$label.log" 2>&1 &
 
     if wait_ready 8 "$pidfile"; then

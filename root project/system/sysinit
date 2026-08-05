@@ -47,7 +47,13 @@ else
 fi
 
 log "ServEcosys boot complete"
-log "  SED:   permission_arbiter(${SED_ARB:-?}) system_manager(${SED_MGR:-?}) ipc_bus(${SED_IPC:-?})"
+sed_status() {
+    for d in permission_arbiter system_manager ipc_bus hal_manager oipes_client; do
+        p="$RUN_DIR/$d.pid"
+        if [ -f "$p" ]; then log "    $d: pid $(cat "$p")"; else log "    $d: DOWN"; fi
+    done
+}
+log "  SED:"; sed_status
 log "  UID:   display_server input_manager compositor system_ui"
 log "  Console: system_manager -> /var/run/servecosys_mgr.sock"
 

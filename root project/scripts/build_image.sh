@@ -54,7 +54,7 @@ prepare_iso_dir() {
     log_step "Preparing ISO directory"
 
     rm -rf "$ISODIR"
-    mkdir -p "$ISODIR"/{boot,EFI/BOOT,system/backend/bin,system/frontend/bin,system/frontend/apps,system/backend/etc/selinux}
+    mkdir -p "$ISODIR"/{boot,EFI/BOOT,system/backend/bin,system/frontend/bin,system/frontend/apps,system/backend/etc/selinux,bin,sbin,etc}
 
     # 拷贝内核
     if [ -f "$KERNEL" ]; then
@@ -89,6 +89,17 @@ prepare_iso_dir() {
     # 拷贝 SELinux 策略
     if [ -d "$BUILD_DIR/selinux" ]; then
         cp "$BUILD_DIR/selinux/"* "$ISODIR/system/backend/etc/selinux/" 2>/dev/null || true
+    fi
+
+    # 安装 system 集成层（真正的 /sbin/init + 启动脚本）
+    if [ -d "$PROJECT_ROOT/system" ]; then
+        cp -r "$PROJECT_ROOT/system/." "$ISODIR/system/"
+        chmod +x "$ISODIR"/system/sysinit "$ISODIR"/system/*.sh 2>/dev/null || true
+        ln -sf /system/sysinit "$ISODIR/sbin/init"
+        ln -sf /system/sysinit "$ISODIR/init"
+        log_info "  System init layer: /sbin/init -> /system/sysinit"
+    else
+        log_warn "  system/ layer not found - ISO will lack a usable init"
     fi
 
     # GRUB 配置

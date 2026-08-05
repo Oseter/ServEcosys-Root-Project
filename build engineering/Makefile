@@ -133,6 +133,12 @@ kernel: kernel-src check-kernel-src kernel-patch
 .PHONY: modules
 modules: kernel
 	@echo "[STEP] 编译内核模块 (产品: $(PRODUCT), 模块集: $(PRODUCT_MODULES))..."
+	@if [ -f "$(LINUX_SRC)/vmlinux.symvers" ]; then \
+		cp "$(LINUX_SRC)/vmlinux.symvers" "$(LINUX_SRC)/Module.symvers"; \
+		echo "  已从 vmlinux.symvers 生成 Module.symvers"; \
+	else \
+		echo "  [WARN] 未找到 vmlinux.symvers，模块符号可能无法解析"; \
+	fi
 	@for m in $$(echo "$(PRODUCT_MODULES)" | tr ' ' '\n'); do \
 		if [ "$$m" = "guard" ]; then \
 			echo "  guard (已内建进内核映像)"; \

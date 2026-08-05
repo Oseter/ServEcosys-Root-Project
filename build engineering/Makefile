@@ -96,7 +96,7 @@ kernel-src:
 .PHONY: kernel-patch
 kernel-patch: check-kernel-src
 	@echo "[STEP] 应用 ServEcosys 内核补丁..."
-	@$(ROOT_PROJECT)/scripts/apply_kernel_patch.sh "$(LINUX_SRC)" "$(PATCHES_DIR)" || { \
+	@"$(ROOT_PROJECT)/scripts/apply_kernel_patch.sh" "$(LINUX_SRC)" "$(PATCHES_DIR)" || { \
 		echo "[WARN] 补丁应用失败（源码版本不匹配时正常），继续..."; \
 	}
 	@echo "[OK] 内核补丁处理完成"
@@ -140,7 +140,7 @@ modules: check-kernel-src
 .PHONY: initramfs
 initramfs:
 	@echo "[STEP] 组装 initramfs..."
-	@$(ROOT_PROJECT)/scripts/build_initramfs.sh "$(OUT_DIR)" "$(INITRAMFS_DIR)"
+	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)"
 	@echo "[OK] initramfs 完成: $(OUT_DIR)/initramfs.cpio.gz"
 
 # ---- 生成可启动 ISO 镜像 ----
@@ -149,7 +149,7 @@ iso image: kernel initramfs
 	@echo "[STEP] 生成可启动 ISO (产品: $(PRODUCT), 设备: $(DEVICE))..."
 	@OUTPUT_ISO="$(OUT_DIR)/ConceptOS.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
 		INITRAMFS="$(OUT_DIR)/initramfs.cpio.gz" \
-		$(ROOT_PROJECT)/scripts/build_image.sh
+		"$(ROOT_PROJECT)/scripts/build_image.sh"
 	@echo "[OK] 可启动 ISO 完成: $(OUT_DIR)/ConceptOS.iso"
 
 # ---- QEMU 启动验证 ----
@@ -157,7 +157,7 @@ QEMU_ARCH ?= x86_64
 .PHONY: qemu
 qemu: iso
 	@echo "[STEP] QEMU 启动验证..."
-	@ARCH="$(QEMU_ARCH)" $(QEMU_TEST) -a "$(QEMU_ARCH)"
+	@ARCH="$(QEMU_ARCH)" "$(QEMU_TEST)" -a "$(QEMU_ARCH)"
 
 # ---- 一键完整构建（产出可启动 ISO） ----
 .PHONY: full
@@ -175,13 +175,13 @@ full: keys kernel modules initramfs iso
 # ---- 密钥与签名 ----
 .PHONY: keys
 keys:
-	@$(ROOT_PROJECT)/scripts/generate_keys.sh --force
+	@"$(ROOT_PROJECT)/scripts/generate_keys.sh" --force
 
 .PHONY: sign
 sign: keys
 	@echo "[STEP] 签名内核镜像..."
 	@if [ -f "$(OUT_DIR)/vmlinuz" ]; then \
-		openssl dgst -sha256 -sign $(ROOT_PROJECT)/scripts/keys/maintainer.key \
+		openssl dgst -sha256 -sign "$(ROOT_PROJECT)/scripts/keys/maintainer.key" \
 			-out "$(OUT_DIR)/vmlinuz.sig" "$(OUT_DIR)/vmlinuz" && \
 		echo "[OK] 签名完成: $(OUT_DIR)/vmlinuz.sig"; \
 	else \

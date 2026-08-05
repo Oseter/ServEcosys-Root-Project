@@ -160,6 +160,11 @@ ServEcosys 使用 Btrfs 文件系统配合多子卷布局：
 ├── frontend/                 # 前端子内核文件夹 (.ssle)
 │   ├── ui/                   # 界面层
 │   └── apps/                 # 原生第三方应用
+├── system/                   # 系统集成层（/sbin/init 与启动编排）
+│   ├── sysinit               # 真实 /sbin/init：SED→权限仲裁→UID 启动主线
+│   ├── sed-bootstrap.sh      # 后端安全域服务按依赖序启动（含就绪门）
+│   ├── uid-bootstrap.sh      # 前端交互域启动（安全门通过后才渲染，并注册授权）
+│   └── lib.sh                # 公共函数：日志/就绪等待/守护进程启动
 ├── restore/                  # 恢复文件区 (factory_image)
 └── scripts/                  # 构建与快照管理脚本
 ```

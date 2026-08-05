@@ -8,7 +8,7 @@
 # 3. 硬件指纹采集与验证
 # 4. 搜索并挂载 Btrfs 根文件系统
 # 5. 快照配置解析与快照引导
-# 6. 切换到真实根文件系统
+# 6. 切换到真实根文件系统（/sbin/init -> system/sysinit，完成 SED->UID 启动）
 #
 
 set -e
@@ -177,6 +177,7 @@ mount --move /dev "$ROOT_MOUNT/dev" 2>/dev/null || true
 mount --move /run "$ROOT_MOUNT/run" 2>/dev/null || true
 
 echo "  Executing switch_root to $ROOT_MOUNT..."
+echo "  (/sbin/init -> system/sysinit: SED up, arbitration authority, then UID)"
 echo "============================================="
 
 exec switch_root "$ROOT_MOUNT" /sbin/init

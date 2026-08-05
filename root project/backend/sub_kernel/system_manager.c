@@ -324,10 +324,80 @@ static int setup_console_socket(void)
     return sock;
 }
 
+/*
+ * CLI mode: forward a command to the RUNNING system manager over its console
+ * socket. The CLI process itself is never the registered manager, so it must
+ * go through the daemon (whose PID the arbiter trusts) to authorize.
+ */
+static int cli_send_console(console_cmd_t cmd, pid_t target, int level)
+{
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (fd < 0) return -1;
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, MGR_SOCK_PATH, sizeof(addr.sun_path) - 1);
+    addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
+
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    console_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.cmd = cmd;
+    msg.target_pid = target;
+    msg.level = level;
+
+    int ok = -1;
+    if (write(fd, &msg, sizeof(msg)) == (ssize_t)sizeof(msg))
+        ok = 0;
+
+    close(fd);
+    return ok;
+}
+
+static int cli_main(int argc, char *argv[])
+{
+    if (argc > 1 && strcmp(argv[1], "authorize") == 0 && argc == 4) {
+        pid_t target = (pid_t)atoi(argv[2]);
+        int level = atoi(argv[3]);
+        if (level < 0 || level > 11) {
+            fprintf(stderr, "level must be in 0-11\n");
+            return 2;
+        }
+        if (cli_send_console(CMD_AUTHORIZE, target, level) != 0) {
+            fprintf(stderr, "cannot reach running system manager (%s)\n", MGR_SOCK_PATH);
+            return 1;
+        }
+        fprintf(stdout, "authorization requested: pid %d -> level %d\n", target, level);
+        return 0;
+    }
+
+    if (argc > 1 && strcmp(argv[1], "status") == 0) {
+        if (cli_send_console(CMD_STATUS, 0, 0) != 0) {
+            fprintf(stderr, "cannot reach running system manager (%s)\n", MGR_SOCK_PATH);
+            return 1;
+        }
+        return 0;
+    }
+
+    fprintf(stdout,
+            "Usage: %s [authorize <pid> <0-11> | status]\n"
+            "  (no args = run as the system manager daemon)\n",
+            argv[0]);
+    return 2;
+}
+
 int main(int argc, char *argv[])
 {
     fprintf(stdout, "ServEcosys System Manager v%s\n", MGR_VERSION);
     fprintf(stdout, "User-control authority domain (sys_dom_t)\n\n");
+
+    if (argc > 1)
+        return cli_main(argc, argv);
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));

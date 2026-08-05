@@ -19,6 +19,7 @@ ipc_error_t ipc_server_create(ipc_channel_t *ch, const char *path) {
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
     addr_len = sizeof(addr);
 
     if (bind(ch->fd, (struct sockaddr *)&addr, addr_len) < 0) {
@@ -28,6 +29,7 @@ ipc_error_t ipc_server_create(ipc_channel_t *ch, const char *path) {
 
     chmod(path, 0660);
     strncpy(ch->path, path, IPC_PATH_MAX - 1);
+    ch->path[IPC_PATH_MAX - 1] = 0;
     ch->is_server = 1;
 
     if (listen(ch->fd, 5) < 0) {
@@ -49,6 +51,7 @@ ipc_error_t ipc_client_connect(ipc_channel_t *ch, const char *path) {
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
 
     if (connect(ch->fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(ch->fd);
@@ -56,6 +59,7 @@ ipc_error_t ipc_client_connect(ipc_channel_t *ch, const char *path) {
     }
 
     strncpy(ch->path, path, IPC_PATH_MAX - 1);
+    ch->path[IPC_PATH_MAX - 1] = 0;
     ch->is_server = 0;
 
     return IPC_OK;

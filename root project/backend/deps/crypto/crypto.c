@@ -1,6 +1,11 @@
+#define _GNU_SOURCE
 #include "crypto.h"
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/random.h>
 
 static const uint32_t K256[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -143,12 +148,17 @@ int crypto_rsa2048_verify(const uint8_t *modulus, size_t mod_len,
 }
 
 int crypto_random_bytes(uint8_t *buffer, size_t len) {
-    static int seeded = 0;
-    if (!seeded) {
-        srand(42);
-        seeded = 1;
+    if (!buffer) return -1;
+
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = getrandom(buffer + done, len - done, 0);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        done += (size_t)n;
     }
-    for (size_t i = 0; i < len; i++)
-        buffer[i] = (uint8_t)(rand() & 0xFF);
     return 0;
 }

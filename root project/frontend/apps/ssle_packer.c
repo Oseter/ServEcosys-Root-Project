@@ -99,6 +99,7 @@ static int collect_files(const char *dir_path, char files[][256], int *count)
 
         if (S_ISREG(st.st_mode)) {
             strncpy(files[*count], full_path, 255);
+            files[*count][255] = 0;
             (*count)++;
             if (verbose)
                 fprintf(stdout, "  Added: %s (%ld bytes)\n", full_path, (long)st.st_size);
@@ -123,17 +124,21 @@ static int generate_manifest(const char files[][256], int count, char *manifest,
         "  \"files\": [\n", timebuf);
 
     for (int i = 0; i < count; i++) {
+        if (pos < 0 || (size_t)pos >= manifest_size) return -1;
+
         const char *fname = files[i];
         const char *basename = strrchr(fname, '/');
         basename = basename ? basename + 1 : fname;
 
         struct stat st;
-        stat(fname, &st);
+        if (stat(fname, &st) != 0) continue;
 
-        pos += snprintf(manifest + pos, manifest_size - pos,
+        int n = snprintf(manifest + pos, manifest_size - pos,
             "    {\"name\": \"%s\", \"size\": %ld, \"mode\": %o}%s\n",
             basename, (long)st.st_size, (unsigned int)st.st_mode & 0777,
             i < count - 1 ? "," : "");
+        if (n < 0 || (size_t)n >= manifest_size - pos) return -1;
+        pos += n;
     }
 
     pos += snprintf(manifest + pos, manifest_size - pos,

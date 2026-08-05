@@ -108,6 +108,7 @@ int hal_claim(hal_devtable_t *table, int index, const char *owner) {
     if (dev->claimed) return -1;
     dev->claimed = 1;
     strncpy(dev->owner, owner ? owner : "unknown", HAL_NAME_MAX - 1);
+    dev->owner[HAL_NAME_MAX - 1] = 0;
     return 0;
 }
 

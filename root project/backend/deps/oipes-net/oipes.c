@@ -139,7 +139,7 @@ int oipes_token_load(oipes_client_t *client, const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
 
-    if (fscanf(f, "%s\n%s\n%ld\n",
+    if (fscanf(f, "%4095s%4095s%ld",
                client->token.access_token,
                client->token.refresh_token,
                &client->token.expires_at) == 3) {

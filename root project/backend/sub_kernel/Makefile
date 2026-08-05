@@ -19,8 +19,9 @@ hal_manager_libs        = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libhal.a
 permission_arbiter_libs = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a $(DEPS_BUILD)/libperm.a
 oipes_client_libs       = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/liboipes-net.a $(DEPS_BUILD)/libcrypto.a
 ipc_bus_libs            = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
+system_manager_libs     = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
 
-SRCS = selinux_manager.c hal_manager.c permission_arbiter.c oipes_client.c ipc_bus.c
+SRCS = selinux_manager.c hal_manager.c permission_arbiter.c oipes_client.c ipc_bus.c system_manager.c
 TARGETS = $(SRCS:.c=)
 
 all: deps $(OUTPUT_DIR) $(TARGETS)
@@ -54,6 +55,11 @@ oipes_client: oipes_client.c $(oipes_client_libs)
 ipc_bus: ipc_bus.c $(ipc_bus_libs)
 	@echo "[SED:smle] Building ipc_bus (deps: log ipc)..."
 	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(ipc_bus_libs) -lpthread
+	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
+
+system_manager: system_manager.c $(system_manager_libs)
+	@echo "[SED:smle] Building system_manager (deps: log ipc)..."
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(system_manager_libs) -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 clean:

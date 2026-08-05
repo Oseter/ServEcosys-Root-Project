@@ -47,9 +47,9 @@ static int load_token(void)
         return -1;
     }
 
-    fscanf(f, "%s\n", auth_token.access_token);
-    fscanf(f, "%s\n", auth_token.refresh_token);
-    fscanf(f, "%ld\n", &auth_token.expires_at);
+    fscanf(f, "%4095s%4095s%ld",
+           auth_token.access_token, auth_token.refresh_token,
+           &auth_token.expires_at);
     auth_token.is_valid = (auth_token.expires_at > time(NULL));
     fclose(f);
 
@@ -63,12 +63,13 @@ static int save_token(void)
     FILE *f = fopen(TOKEN_PATH, "w");
     if (!f) return -1;
 
+    /* 先收紧权限再写入，避免 token 以默认 umask 短暂落入可读状态 */
+    fchmod(fileno(f), 0600);
+
     fprintf(f, "%s\n", auth_token.access_token);
     fprintf(f, "%s\n", auth_token.refresh_token);
     fprintf(f, "%ld\n", auth_token.expires_at);
     fclose(f);
-
-    fchmod(fileno(f), 0600);
     return 0;
 }
 

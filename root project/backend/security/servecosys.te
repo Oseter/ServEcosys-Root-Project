@@ -86,12 +86,10 @@ allow sys_dom_t self:security { compute_av compute_create compute_member compute
 allow sys_dom_t self:system { module_load policy };
 
 # SED hardware access
-allow sys_dom_t self:capability { sys_rawio };
 dev_read_sysfs(sys_dom_t)
 dev_read_urand(sys_dom_t)
 
 # SED can manage modules
-allow sys_dom_t self:system module_load;
 allow sys_dom_t servecosys_probe_module_t:module { load };
 allow sys_dom_t servecosys_pc_module_t:module { load };
 allow sys_dom_t servecosys_mobile_module_t:module { load };
@@ -133,7 +131,7 @@ allow uid_dom_t app_sandbox_t:dir { read search };
 allow uid_dom_t app_sandbox_t:fd use;
 
 # UID system UI
-allow uid_dom_t self:drr { drr_send_msg drr_recv_msg };
+allow uid_dom_t self:unix_dgram_socket { sendto recvfrom };
 
 ###########################################
 # Application Sandbox Rules
@@ -163,13 +161,8 @@ allow oipes_client_t sys_data_t:file { read write };
 # Permission Level Constraints
 ###########################################
 
-# Level 4 (BL_UNLOCK) allows raw block device access
-mlsconstrain file { read write }
-    (l1 eq l2 or l1 dom l2);
-
-# Level 8 (SELINUX) allows policy reload
-constrain security { compute_av compute_create compute_member compute_relabel }
-    (u1 == u2 or u1 == sys_dom_t);
+# Note: constrain/mlsconstrain are not permitted in loadable policy
+# modules; enforce level/MLS constraints in the base policy instead.
 
 ###########################################
 # File Labeling

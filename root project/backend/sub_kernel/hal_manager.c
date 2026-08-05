@@ -84,6 +84,7 @@ static device_class_t classify_device(const char *devpath, const char *subsystem
 static int scan_device(const char *sysfs_path)
 {
     char devpath[PATH_MAX];
+    char line[PATH_MAX];
     char subsystem[64];
     char uevent_path[PATH_MAX];
     FILE *f;
@@ -93,15 +94,19 @@ static int scan_device(const char *sysfs_path)
     f = fopen(uevent_path, "r");
     if (!f) return -1;
 
-    while (fgets(devpath, sizeof(devpath), f)) {
-        devpath[strcspn(devpath, "\n")] = 0;
-        if (sscanf(devpath, "MAJOR=%d", &major) == 1) continue;
-        if (sscanf(devpath, "MINOR=%d", &minor) == 1) continue;
-        if (strncmp(devpath, "DEVNAME=", 8) == 0) {
-            snprintf(devpath, sizeof(devpath), "/dev/%s", devpath + 8);
+    devpath[0] = 0;
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = 0;
+        if (sscanf(line, "MAJOR=%d", &major) == 1) continue;
+        if (sscanf(line, "MINOR=%d", &minor) == 1) continue;
+        if (strncmp(line, "DEVNAME=", 8) == 0) {
+            snprintf(devpath, sizeof(devpath), "/dev/%s", line + 8);
         }
     }
     fclose(f);
+
+    if (devpath[0] == 0)
+        strncpy(devpath, sysfs_path, sizeof(devpath) - 1);
 
     snprintf(subsystem, sizeof(subsystem), "%s/subsystem", sysfs_path);
     char subsys_link[PATH_MAX];

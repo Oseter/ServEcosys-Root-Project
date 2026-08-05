@@ -55,15 +55,22 @@ void display_close(display_t *disp) {
 void display_fill_rect(display_t *disp, int x, int y, int w, int h, uint32_t color) {
     if (!disp || !disp->buffer) return;
     int bpp = disp->bpp / 8;
+    if (bpp <= 0) return;
 
-    for (int row = y; row < y + h && row < disp->height; row++) {
-        uint8_t *line = disp->buffer + row * disp->stride + x * bpp;
-        for (int col = 0; col < w && (x + col) < disp->width; col++) {
-            line[col * bpp]     = color & 0xFF;
-            line[col * bpp + 1] = (color >> 8) & 0xFF;
-            line[col * bpp + 2] = (color >> 16) & 0xFF;
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = x + w > disp->width ? disp->width : x + w;
+    int y1 = y + h > disp->height ? disp->height : y + h;
+
+    for (int row = y0; row < y1; row++) {
+        uint8_t *line = disp->buffer + (size_t)row * disp->stride + (size_t)x0 * bpp;
+        for (int col = x0; col < x1; col++) {
+            int off = (col - x0) * bpp;
+            line[off]     = color & 0xFF;
+            line[off + 1] = (color >> 8) & 0xFF;
+            line[off + 2] = (color >> 16) & 0xFF;
             if (bpp == 4)
-                line[col * bpp + 3] = (color >> 24) & 0xFF;
+                line[off + 3] = (color >> 24) & 0xFF;
         }
     }
 }
@@ -90,5 +97,11 @@ int display_set_variable(display_t *disp, int width, int height, int bpp) {
     vinfo.xres = width; vinfo.yres = height;
     vinfo.bits_per_pixel = bpp;
     if (ioctl(disp->fd, FBIOPUT_VSCREENINFO, &vinfo) < 0) return -1;
+
+    /* 释放旧映射再按新参数重新打开，避免重复 mmap 泄漏 */
+    if (disp->buffer) {
+        munmap(disp->buffer, disp->screensize);
+        disp->buffer = NULL;
+    }
     return display_open(disp, "/dev/fb0");
 }

@@ -18,9 +18,9 @@ static const char *level_names[] = {
 };
 
 const char *perm_level_name(perm_level_t level) {
-    if (level <= PERM_BOOTLOADER)
-        return level_names[level];
-    return "unknown";
+    if (level < 0 || level > PERM_BOOTLOADER)
+        return "unknown";
+    return level_names[level];
 }
 
 int perm_check(perm_level_t current, perm_level_t required) {

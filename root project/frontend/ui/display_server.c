@@ -82,6 +82,7 @@ static int open_display(const char *devpath)
     }
 
     strncpy(display.devpath, devpath, sizeof(display.devpath) - 1);
+    display.devpath[sizeof(display.devpath) - 1] = 0;
 
     fprintf(stdout, "[DS] Display opened: %dx%d, %dbpp\n",
             display.vinfo.xres, display.vinfo.yres,
@@ -95,16 +96,24 @@ static void display_fill_rect(int x, int y, int w, int h, unsigned int color)
     pthread_mutex_lock(&flip_mutex);
 
     int bpp = display.vinfo.bits_per_pixel / 8;
+    if (bpp <= 0) { pthread_mutex_unlock(&flip_mutex); return; }
     int stride = display.finfo.line_length;
 
-    for (int row = y; row < y + h && row < display.vinfo.yres; row++) {
-        unsigned char *line = display.buffer + row * stride + x * bpp;
-        for (int col = 0; col < w && (x + col) < display.vinfo.xres; col++) {
-            line[col * bpp]     = color & 0xFF;
-            line[col * bpp + 1] = (color >> 8) & 0xFF;
-            line[col * bpp + 2] = (color >> 16) & 0xFF;
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = (int)(x + w > display.vinfo.xres ? display.vinfo.xres : x + w);
+    int y1 = (int)(y + h > display.vinfo.yres ? display.vinfo.yres : y + h);
+
+    for (int row = y0; row < y1; row++) {
+        unsigned char *line = display.buffer +
+                              (size_t)row * stride + (size_t)x0 * bpp;
+        for (int col = x0; col < x1; col++) {
+            int off = (col - x0) * bpp;
+            line[off]     = color & 0xFF;
+            line[off + 1] = (color >> 8) & 0xFF;
+            line[off + 2] = (color >> 16) & 0xFF;
             if (bpp == 4)
-                line[col * bpp + 3] = (color >> 24) & 0xFF;
+                line[off + 3] = (color >> 24) & 0xFF;
         }
     }
 
@@ -169,13 +178,13 @@ static void *ipc_listener(void *arg)
             if (strncmp(cmd, "FILL_RECT", 9) == 0) {
                 int x, y, w, h;
                 unsigned int color;
-                sscanf(cmd + 10, "%d %d %d %d %x", &x, &y, &w, &h, &color);
-                display_fill_rect(x, y, w, h, color);
+                if (sscanf(cmd + 10, "%d %d %d %d %x", &x, &y, &w, &h, &color) == 5)
+                    display_fill_rect(x, y, w, h, color);
             }
             else if (strncmp(cmd, "CLEAR", 5) == 0) {
                 unsigned int color;
-                sscanf(cmd + 6, "%x", &color);
-                display_clear(color);
+                if (sscanf(cmd + 6, "%x", &color) == 1)
+                    display_clear(color);
             }
         }
 

@@ -7,9 +7,15 @@
  * - 维护进程权限级别标记
  * - 向 UID 返回裁决结果
  *
+ * 安全模型：
+ * - 提权必须由用户显式授权（用户指定的应用/进程）
+ * - 进程只能管理自己（经 SO_PEERCRED 校验真实发起者）
+ * - 未授权进程一律不得提权
+ *
  * 运行在 sys_dom_t 域
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +51,8 @@ typedef enum {
     REQ_GET_LEVEL,
     REQ_SET_LEVEL,
     REQ_QUERY_CAP,
+    REQ_REGISTER_MANAGER,
+    REQ_AUTHORIZE,
 } request_type_t;
 
 typedef struct {
@@ -63,17 +71,23 @@ typedef struct {
     char    reason[128];
 } perm_response_t;
 
+/*
+ * user_authorized_cap = 用户明确授权该进程可达到的最高权限级。
+ * 未授权（0）的进程一律不得提权。授权只能由系统管理器下达。
+ */
 typedef struct {
     pid_t           pid;
     perm_level_t    level;
     char            selinux_context[256];
     int             is_signed;
     int             is_self_signed;
+    perm_level_t    user_authorized_cap;
 } proc_cred_t;
 
 static proc_cred_t proc_table[MAX_REQUESTS];
 static int proc_count = 0;
 static volatile sig_atomic_t running = 1;
+static pid_t manager_pid = -1;   /* 已注册的系统管理器 PID */
 
 static const char *level_name(perm_level_t level)
 {
@@ -110,11 +124,33 @@ static int register_process(pid_t pid, perm_level_t level)
     proc_table[proc_count].level = level;
     proc_table[proc_count].is_signed = 0;
     proc_table[proc_count].is_self_signed = 0;
+    proc_table[proc_count].user_authorized_cap = PERM_LEVEL_READONLY;
     snprintf(proc_table[proc_count].selinux_context,
              sizeof(proc_table[proc_count].selinux_context),
              "u:r:app_sandbox_t:s0");
 
     return proc_count++;
+}
+
+/* 经 SO_PEERCRED 获取真实发起者 PID，杜绝 pid 伪造 */
+static pid_t get_peer_pid(int client_fd)
+{
+    struct ucred cred;
+    socklen_t len = sizeof(cred);
+
+    if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
+        return -1;
+    if (cred.pid == 0)
+        return -1;
+    return cred.pid;
+}
+
+static int find_process(pid_t pid)
+{
+    for (int i = 0; i < proc_count; i++)
+        if (proc_table[i].pid == pid)
+            return i;
+    return -1;
 }
 
 static perm_level_t get_process_level(pid_t pid)
@@ -136,32 +172,87 @@ static int check_permission(pid_t pid, perm_level_t required)
     return -1;
 }
 
-static int set_process_level(pid_t pid, perm_level_t new_level)
+/*
+ * 设置进程权限级。安全约束：
+ *  - 只能操作自己（peer_pid 必须等于被操作 pid），禁止替他人提权
+ *  - 降级/同级始终允许
+ *  - 提权必须落在用户授权上限 (user_authorized_cap) 之内
+ */
+static int set_process_level(pid_t pid, perm_level_t new_level, pid_t peer_pid)
 {
     if (new_level > PERM_LEVEL_BOOTLOADER || new_level < PERM_LEVEL_READONLY)
         return -1;
 
-    switch (new_level) {
-        case PERM_LEVEL_SELINUX:
-        case PERM_LEVEL_BOOTLOADER:
-            break;
-        default:
-            if (new_level > PERM_LEVEL_DEBUG && new_level < PERM_LEVEL_SELINUX) {
-                if (!is_signed_by_official(pid))
-                    return -1;
-            }
-            break;
+    if (peer_pid != pid)
+        return -1;
+
+    perm_level_t current = get_process_level(pid);
+
+    if (new_level <= current)
+        goto apply;
+
+    int idx = find_process(pid);
+    if (idx < 0 || new_level > proc_table[idx].user_authorized_cap) {
+        fprintf(stdout, "[ARBITER] Denied: PID %d escalation to %d unauthorised "
+                        "(cap %d)\n", pid, new_level,
+                idx >= 0 ? proc_table[idx].user_authorized_cap : 0);
+        return -1;
     }
 
-    int idx = register_process(pid, new_level);
-    if (idx >= 0) {
-        proc_table[idx].level = new_level;
+    if (new_level > PERM_LEVEL_DEBUG && new_level < PERM_LEVEL_SELINUX) {
+        if (!is_signed_by_official(pid))
+            return -1;
+    }
+
+apply:
+    int idx2 = register_process(pid, new_level);
+    if (idx2 >= 0) {
+        proc_table[idx2].level = new_level;
         fprintf(stdout, "[ARBITER] PID %d level set to %s (%d)\n",
                 pid, level_name(new_level), new_level);
         return 0;
     }
 
     return -1;
+}
+
+/*
+ * 注册系统管理器。只有首个声明者可成为 manager，后续声明一律拒绝。
+ */
+static int register_manager(pid_t peer_pid)
+{
+    if (manager_pid >= 0)
+        return -1;
+    manager_pid = peer_pid;
+    fprintf(stdout, "[ARBITER] System Manager registered (PID %d)\n", peer_pid);
+    return 0;
+}
+
+/*
+ * 用户授权：仅系统管理器可调用，指定某进程可达到的最高权限级。
+ * 非 manager 的请求一律拒绝（防止自授权提权）。
+ */
+static int authorize_process(pid_t target_pid, perm_level_t cap, pid_t peer_pid)
+{
+    if (peer_pid != manager_pid) {
+        fprintf(stdout, "[ARBITER] Auth rejected: caller %d is not manager (%d)\n",
+                peer_pid, manager_pid);
+        return -1;
+    }
+    if (cap > PERM_LEVEL_BOOTLOADER || cap < PERM_LEVEL_READONLY)
+        return -1;
+
+    int idx = find_process(target_pid);
+    if (idx < 0) {
+        idx = register_process(target_pid, PERM_LEVEL_USER);
+        if (idx < 0)
+            return -1;
+    }
+
+    proc_table[idx].user_authorized_cap = cap;
+    fprintf(stdout, "[ARBITER] User authorized PID %d up to level %d (%s)\n",
+            target_pid, cap, level_name(cap));
+    return 0;
 }
 
 static int is_signed_by_official(pid_t pid)
@@ -172,7 +263,7 @@ static int is_signed_by_official(pid_t pid)
     return 0;
 }
 
-static perm_response_t handle_request(const perm_request_t *req)
+static perm_response_t handle_request(const perm_request_t *req, pid_t peer_pid)
 {
     perm_response_t resp;
     memset(&resp, 0, sizeof(resp));
@@ -202,7 +293,7 @@ static perm_response_t handle_request(const perm_request_t *req)
             break;
 
         case REQ_SET_LEVEL: {
-            int result = set_process_level(req->pid, req->target_level);
+            int result = set_process_level(req->pid, req->target_level, peer_pid);
             if (result == 0) {
                 resp.status = 0;
                 resp.current_level = req->target_level;
@@ -214,6 +305,22 @@ static perm_response_t handle_request(const perm_request_t *req)
                 snprintf(resp.reason, sizeof(resp.reason),
                          "failed to set level to %d", req->target_level);
             }
+            break;
+        }
+        case REQ_REGISTER_MANAGER: {
+            int result = register_manager(peer_pid);
+            resp.status = result == 0 ? 0 : -1;
+            resp.current_level = get_process_level(req->pid);
+            snprintf(resp.reason, sizeof(resp.reason),
+                     result == 0 ? "manager registered" : "manager already registered");
+            break;
+        }
+        case REQ_AUTHORIZE: {
+            int result = authorize_process(req->pid, req->target_level, peer_pid);
+            resp.status = result == 0 ? 0 : -1;
+            snprintf(resp.reason, sizeof(resp.reason),
+                     result == 0 ? "process authorized up to level %d" : "authorization denied",
+                     req->target_level);
             break;
         }
         default:
@@ -292,13 +399,13 @@ int main(int argc, char *argv[])
         perm_request_t req;
         ssize_t n = read(client, &req, sizeof(req));
         if (n > 0) {
-            register_process(req.pid, PERM_LEVEL_USER);
+            pid_t peer_pid = get_peer_pid(client);
 
-            perm_response_t resp = handle_request(&req);
+            perm_response_t resp = handle_request(&req, peer_pid);
             write(client, &resp, sizeof(resp));
 
-            fprintf(stdout, "[ARBITER] Request #%d from PID %d: %s\n",
-                    req.request_id, req.pid, resp.reason);
+            fprintf(stdout, "[ARBITER] Request #%d from PID %d (peer %d): %s\n",
+                    req.request_id, req.pid, peer_pid, resp.reason);
         }
 
         close(client);

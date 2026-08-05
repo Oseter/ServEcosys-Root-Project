@@ -8,8 +8,24 @@
 #include <time.h>
 #include <dirent.h>
 
+/*
+ * 防御命令注入：所有经由 system() 拼接进 shell 的参数必须先过此校验，
+ * 拒绝含 shell 元字符的输入。
+ */
+static int btrfs_shell_safe(const char *s)
+{
+    if (!s || !s[0]) return 0;
+    if (strchr(s, ';') || strchr(s, '&') || strchr(s, '|') ||
+        strchr(s, '$') || strchr(s, '`') || strchr(s, '<') ||
+        strchr(s, '>') || strchr(s, '(') || strchr(s, ')') ||
+        strchr(s, '\n') || strchr(s, '\r') || strchr(s, '\\') ||
+        strchr(s, '\''))
+        return 0;
+    return 1;
+}
+
 int btrfs_detect(const char *device) {
-    if (!device) return -1;
+    if (!device || !btrfs_shell_safe(device)) return -1;
 
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "blkid -t TYPE=btrfs \"%s\" >/dev/null 2>&1", device);
@@ -20,6 +36,9 @@ int btrfs_mount_subvol(const char *device, const char *subvol,
                        const char *mountpoint, int readonly)
 {
     if (!device || !mountpoint) return -1;
+    if (!btrfs_shell_safe(device) || !btrfs_shell_safe(mountpoint) ||
+        (subvol && subvol[0] && !btrfs_shell_safe(subvol)))
+        return -1;
 
     mkdir(mountpoint, 0755);
 
@@ -36,9 +55,11 @@ int btrfs_mount_subvol(const char *device, const char *subvol,
 
 int btrfs_create_snapshot(const char *source, const char *dest, int readonly) {
     if (!source || !dest) return -1;
+    if (!btrfs_shell_safe(source) || !btrfs_shell_safe(dest)) return -1;
 
     char parent[BTRFS_PATH_MAX];
     strncpy(parent, dest, BTRFS_PATH_MAX - 1);
+    parent[BTRFS_PATH_MAX - 1] = 0;
     char *slash = strrchr(parent, '/');
     if (slash) {
         *slash = 0;
@@ -53,7 +74,7 @@ int btrfs_create_snapshot(const char *source, const char *dest, int readonly) {
 }
 
 int btrfs_delete_snapshot(const char *path) {
-    if (!path) return -1;
+    if (!path || !btrfs_shell_safe(path)) return -1;
 
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "btrfs subvolume delete \"%s\" >/dev/null 2>&1", path);
@@ -90,6 +111,7 @@ int btrfs_list_snapshots(const char *snapshots_dir, btrfs_snaplist_t *list) {
 
 int btrfs_rollback(const char *snapshot_path, const char *target) {
     if (!snapshot_path || !target) return -1;
+    if (!btrfs_shell_safe(snapshot_path) || !btrfs_shell_safe(target)) return -1;
 
     char timestamp[32];
     time_t now = time(NULL);

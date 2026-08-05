@@ -38,6 +38,7 @@ typedef struct {
 
 static window_t windows[MAX_WINDOWS];
 static int window_count = 0;
+static int next_window_id = 0;
 static int focus_window = -1;
 static int display_fd = -1;
 static volatile sig_atomic_t running = 1;
@@ -72,8 +73,9 @@ static int create_window(const char *title, int x, int y, int w, int h)
     if (window_count >= MAX_WINDOWS) return -1;
 
     window_t *win = &windows[window_count];
-    win->id = window_count;
+    win->id = next_window_id++;
     strncpy(win->title, title, sizeof(win->title) - 1);
+    win->title[sizeof(win->title) - 1] = 0;
     win->x = x;
     win->y = y;
     win->width = w;

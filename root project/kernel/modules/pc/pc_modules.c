@@ -20,6 +20,7 @@ static int probe_pci_devices(void) {
     int count = 0;
     while ((dev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, dev)) != NULL) {
         count++;
+        pci_dev_put(dev);
     }
     pr_info("ServEcosys PC: Found %d PCI devices\n", count);
     return count;

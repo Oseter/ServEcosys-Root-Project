@@ -74,19 +74,19 @@ generate_ecdsa_keypair() {
     log_step "Generating $name ECDSA key pair..."
     
     # 生成 EC 密钥
-    openssl ecparam -genkey -name prime256v1 -out "$KEYS_DIR/$name_ec.key"
-    chmod 600 "$KEYS_DIR/$name_ec.key"
+    openssl ecparam -genkey -name prime256v1 -out "$KEYS_DIR/${name}_ec.key"
+    chmod 600 "$KEYS_DIR/${name}_ec.key"
     
     # 生成 CSR
-    openssl req -new -key "$KEYS_DIR/$name_ec.key" \
-        -out "$KEYS_DIR/$name_ec.csr" \
+    openssl req -new -key "$KEYS_DIR/${name}_ec.key" \
+        -out "$KEYS_DIR/${name}_ec.csr" \
         -subj "/CN=$cn/O=$org/C=CN"
     
     # 自签名证书
     openssl x509 -req -days 3650 \
-        -in "$KEYS_DIR/$name_ec.csr" \
-        -signkey "$KEYS_DIR/$name_ec.key" \
-        -out "$KEYS_DIR/$name_ec.crt"
+        -in "$KEYS_DIR/${name}_ec.csr" \
+        -signkey "$KEYS_DIR/${name}_ec.key" \
+        -out "$KEYS_DIR/${name}_ec.crt"
     
     log_info "$name ECDSA key pair generated"
 }

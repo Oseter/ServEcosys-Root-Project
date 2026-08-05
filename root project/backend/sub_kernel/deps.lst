@@ -5,3 +5,4 @@ hal_manager: log hal
 permission_arbiter: log ipc perm
 oipes_client: log oipes-net crypto
 ipc_bus: log ipc
+system_manager: log ipc

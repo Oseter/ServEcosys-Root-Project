@@ -63,8 +63,11 @@ static int add_notification(const char *app, const char *title,
     notification_t *n = &notifications[notification_count];
     n->id = next_notif_id++;
     strncpy(n->app_name, app, sizeof(n->app_name) - 1);
+    n->app_name[sizeof(n->app_name) - 1] = 0;
     strncpy(n->title, title, sizeof(n->title) - 1);
+    n->title[sizeof(n->title) - 1] = 0;
     strncpy(n->message, msg, sizeof(n->message) - 1);
+    n->message[sizeof(n->message) - 1] = 0;
     n->timestamp = time(NULL);
     n->read = 0;
     n->priority = priority;

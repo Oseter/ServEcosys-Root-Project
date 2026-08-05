@@ -29,7 +29,7 @@ $(OUTPUT_DIR):
 define BUILD_DEP
 $(1): $(OUTPUT_DIR)
 	@echo "[DEPS:smle] Building $(1)..."
-	$(CC) $(CFLAGS) -c deps/$(1)/$(1).c -o $(OUTPUT_DIR)/$(1).o
+	$(CC) $(CFLAGS) -c $(1)/$(1).c -o $(OUTPUT_DIR)/$(1).o
 	$(AR) rcs $(OUTPUT_DIR)/lib$(1).a $(OUTPUT_DIR)/$(1).o
 	@echo "[DEPS:smle] lib$(1).a built"
 endef

@@ -88,6 +88,8 @@ static void collect_pci_ids(u8 *buffer, size_t *offset, size_t buf_size)
         memcpy(buffer + *offset, ids, ids_size);
         *offset += ids_size;
     }
+
+    pci_dev_put(pdev);
 }
 
 int servecosys_generate_fingerprint(u8 *buffer, size_t size)

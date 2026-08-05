@@ -108,7 +108,7 @@ function Build-ProbeModules {
 function Generate-Initramfs {
     Write-LogInfo "Generating initramfs..."
     
-    $initramfsSrc = Join-Path $ScriptsDir 'initramfs'
+    $initramfsSrc = Join-Path $ScriptDir 'initramfs'
     $initramfsOut = Join-Path $OutputDir 'initramfs.cpio.gz'
     
     New-Item -ItemType Directory -Force -Path $initramfsSrc | Out-Null

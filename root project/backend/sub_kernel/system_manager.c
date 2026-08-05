@@ -352,8 +352,15 @@ static int cli_send_console(console_cmd_t cmd, pid_t target, int level)
     msg.level = level;
 
     int ok = -1;
-    if (write(fd, &msg, sizeof(msg)) == (ssize_t)sizeof(msg))
-        ok = 0;
+    if (write(fd, &msg, sizeof(msg)) == (ssize_t)sizeof(msg)) {
+        char reply[512];
+        ssize_t n = read(fd, reply, sizeof(reply) - 1);
+        if (n > 0) {
+            reply[n] = 0;
+            fprintf(stdout, "%s", reply);
+            ok = 0;
+        }
+    }
 
     close(fd);
     return ok;
@@ -372,7 +379,6 @@ static int cli_main(int argc, char *argv[])
             fprintf(stderr, "cannot reach running system manager (%s)\n", MGR_SOCK_PATH);
             return 1;
         }
-        fprintf(stdout, "authorization requested: pid %d -> level %d\n", target, level);
         return 0;
     }
 
@@ -441,8 +447,19 @@ int main(int argc, char *argv[])
 
         console_msg_t msg;
         ssize_t n = read(client, &msg, sizeof(msg));
-        if (n > 0)
-            handle_console(&msg);
+        if (n > 0) {
+            /* 将命令应答写回发起方（CLI/前端），而非仅本进程 stdout */
+            int saved_stdout = dup(STDOUT_FILENO);
+            if (saved_stdout >= 0) {
+                dup2(client, STDOUT_FILENO);
+                handle_console(&msg);
+                fflush(stdout);
+                dup2(saved_stdout, STDOUT_FILENO);
+                close(saved_stdout);
+            } else {
+                handle_console(&msg);
+            }
+        }
 
         close(client);
     }

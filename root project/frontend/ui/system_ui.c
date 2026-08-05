@@ -143,7 +143,7 @@ static char *format_time(void)
 /* 向权限仲裁器查询自身权限级；失败返回 -1 */
 static int query_level(pid_t me)
 {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
     if (fd < 0)
         return -1;
 

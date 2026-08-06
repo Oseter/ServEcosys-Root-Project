@@ -26,6 +26,7 @@ OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # make OUT_DIR absolute so subshell cd (cpio
 
 # 1. 复制骨架
 cp -a "$INITRAMFS_SRC/." "$STAGING/"
+chmod +x "$STAGING/init" 2>/dev/null || true
 mkdir -p "$STAGING/bin" "$STAGING/sbin" "$STAGING/lib/modules" "$STAGING/dev" "$STAGING/proc" "$STAGING/sys" "$STAGING/tmp"
 
 # 1.1 嵌入静态 busybox（提供 sh/mount/cp/switch_root 等必备工具）

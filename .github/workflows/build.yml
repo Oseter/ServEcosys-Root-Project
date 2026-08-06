@@ -14,6 +14,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-conceptos
+      - name: QEMU boot smoke test
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          cd "build engineering"
+          set +e
+          timeout --signal=KILL 100 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -kernel "../root project/build/vmlinuz" \
+            -initrd "../root project/build/initramfs.cpio.gz" \
+            -append "console=ttyS0 loglevel=5 rdinit=/init panic=-1" \
+            -nographic -no-reboot \
+            > boot.log 2>&1
+          echo "===== BOOT LOG (last 120) ====="
+          tail -n 120 boot.log
+          echo "===== RESULT ====="
+          if grep -q "ServEcosys sysinit start" boot.log; then
+            echo "SMOKE PASS: live system booted to sysinit"
+          elif grep -qE 'Kernel panic|Oops|BUG:|unable to handle kernel|No working init' boot.log; then
+            echo "SMOKE FAIL: kernel panic / init failure"
+            exit 1
+          else
+            echo "SMOKE WARN: no sysinit marker seen"
+            exit 1
+          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

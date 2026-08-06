@@ -113,6 +113,8 @@ CONFIG_TMPFS_POSIX_ACL=y
 CONFIG_PROC_FS=y
 CONFIG_SYSFS=y
 CONFIG_DEVPTS_FS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
 CONFIG_DEVKMEM=n
 
 # ============================================================================

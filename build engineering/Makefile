@@ -132,31 +132,14 @@ kernel: kernel-src check-kernel-src kernel-patch
 # 逐个 M= 指向模块目录，各自独立构建（仅自身 obj-m，不触发整树 defconfig 驱动）
 .PHONY: modules
 modules: kernel
-	@echo "[STEP] 编译内核模块 (产品: $(PRODUCT), 模块集: $(PRODUCT_MODULES))..."
-	@if [ -f "$(LINUX_SRC)/vmlinux.symvers" ]; then \
-		cp "$(LINUX_SRC)/vmlinux.symvers" "$(LINUX_SRC)/Module.symvers"; \
-		echo "  已从 vmlinux.symvers 生成 Module.symvers"; \
-	else \
-		echo "  [WARN] 未找到 vmlinux.symvers，模块符号可能无法解析"; \
-	fi
-	@for m in $$(echo "$(PRODUCT_MODULES)" | tr ' ' '\n'); do \
-		if [ "$$m" = "guard" ]; then \
-			echo "  guard (已内建进内核映像)"; \
-			continue; \
-		fi; \
-		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
-			echo "  -> $$m"; \
-			$(MAKE) -C "$(LINUX_SRC)" M="$$(cd "$(LINUX_SRC)/kernel/servecosys/modules/$$m" && pwd)" modules || exit 1; \
-		else \
-			echo "  [WARN] 模块 $$m 未同步，跳过"; \
-		fi; \
-	done
+	@echo "[STEP] Build kernel modules (product: $(PRODUCT), set: $(PRODUCT_MODULES))..."
+	@$(MAKE) -C "$(LINUX_SRC)" -j$$(nproc) modules || exit 1
 	@mkdir -p "$(OUT_DIR)/modules"
 	@find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \;
 	@n=$$(find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' 2>/dev/null | wc -l); \
-	echo "[OK] 内核模块完成: $(OUT_DIR)/modules/ ($$n 个 .ko)"; \
+	echo "[OK] kernel modules collected: $(OUT_DIR)/modules/ ($$n .ko)"; \
 	if [ "$$n" -eq 0 ]; then \
-		echo "[ERROR] 未产出任何 .ko——检查 CONFIG_SERVECOSYS_PROBE/PC/MOBILE 是否=m 及模块能否编译"; \
+		echo "[ERROR] no .ko generated, check CONFIG_SERVECOSYS_PROBE/PC/MOBILE=m"; \
 		exit 1; \
 	fi
 

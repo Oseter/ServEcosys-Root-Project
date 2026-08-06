@@ -27,10 +27,11 @@ echo ""
 # [1/7] Pseudo filesystem mounting
 # ============================================
 echo "[1/7] Mounting pseudo filesystems..."
-mkdir -p /proc /sys /dev /dev/pts /run
+mkdir -p /proc /sys /run
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm
 mount -t devpts devpts /dev/pts
 mount -t tmpfs tmpfs /run
 

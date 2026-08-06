@@ -35,7 +35,7 @@ if [ -f "$BUSYBOX_BIN" ]; then
     echo "[initramfs]   嵌入 busybox: $BUSYBOX_BIN"
     cp -L "$BUSYBOX_BIN" "$STAGING/bin/busybox"
     chmod +x "$STAGING/bin/busybox"
-    ( cd "$STAGING/bin" && ln -sf busybox sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead 2>/dev/null || "$STAGING/bin/busybox" --install -s "$STAGING/bin" )
+    ( cd "$STAGING/bin" && for a in sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead; do ln -sf busybox "$a"; done )
     # /sbin/init 保留骨架 init；busybox init 需要的 applets 也放 /sbin
     ( cd "$STAGING/sbin" && for a in init switch_root modprobe; do ln -sf ../bin/busybox "$a" 2>/dev/null || true; done )
 else
@@ -57,6 +57,7 @@ if [ -d "$OUT_DIR/modules" ]; then
     cp -a "$OUT_DIR/modules/." "$STAGING/lib/modules/"
 fi
 
+echo "[initramfs]   DIAG: init=\$([ -f "\/init" ] && ls -l "\/init" | awk '{print \}' || echo MISSING)  sh_link=\$(readlink "\/bin/sh")  sbin_init=\$(readlink "\/sbin/init")
 # 4. 打包
 ( cd "$STAGING" && find . | cpio -H newc -o 2>/dev/null | gzip > "$OUT_DIR/initramfs.cpio.gz" )
 

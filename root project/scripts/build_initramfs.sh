@@ -22,6 +22,7 @@ STAGING="$(mktemp -d)"
 
 echo "[initramfs] 组装 initramfs..."
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # make OUT_DIR absolute so subshell cd (cpio/gzip) cannot break it
 
 # 1. 复制骨架
 cp -a "$INITRAMFS_SRC/." "$STAGING/"

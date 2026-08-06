@@ -121,6 +121,7 @@ if [ -z "$ROOT_DEV" ]; then
         echo "  Copying system layer..."
         cp -a /system /live/system 2>/dev/null || { echo "  [ERROR] copy /system failed"; exec /bin/sh; }
         for d in proc sys dev run tmp sbin bin; do mkdir -p "/live/$d"; done
+        cp -a /bin/. /live/bin/ 2>/dev/null || true
 
         # /sbin/init -> /system/sysinit（tmpfs 支持符号链接）
         ln -sf /system/sysinit /live/sbin/init

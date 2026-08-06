@@ -57,7 +57,6 @@ if [ -d "$OUT_DIR/modules" ]; then
     cp -a "$OUT_DIR/modules/." "$STAGING/lib/modules/"
 fi
 
-echo "[initramfs]   DIAG: init=\$([ -f "\/init" ] && ls -l "\/init" | awk '{print \}' || echo MISSING)  sh_link=\$(readlink "\/bin/sh")  sbin_init=\$(readlink "\/sbin/init")
 # 4. 打包
 ( cd "$STAGING" && find . | cpio -H newc -o 2>/dev/null | gzip > "$OUT_DIR/initramfs.cpio.gz" )
 

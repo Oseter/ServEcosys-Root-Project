@@ -146,7 +146,7 @@ modules: kernel
 		fi; \
 		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
 			echo "  -> $$m"; \
-			$(MAKE) -C "$(LINUX_SRC)" M="$(LINUX_SRC)/kernel/servecosys/modules/$$m" modules || exit 1; \
+			$(MAKE) -C "$(LINUX_SRC)" M="$$(cd "$(LINUX_SRC)/kernel/servecosys/modules/$$m" && pwd)" modules || exit 1; \
 		else \
 			echo "  [WARN] 模块 $$m 未同步，跳过"; \
 		fi; \

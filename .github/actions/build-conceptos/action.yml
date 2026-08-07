@@ -29,9 +29,10 @@ runs:
           xorriso mtools dosfstools \
           grub-pc-bin grub-efi-amd64-bin grub-common \
           qemu-system-x86 ovmf \
-          openssl sbsigntool efitools
+          openssl sbsigntool efitools \
+          selinux-policy-devel
 
-    - name: Build full (内核 + 模块 + initramfs + ISO)
+    - name: Build full (内核 + 模块 + SED .smle + SELinux 策略 + initramfs + ISO)
       shell: bash
       run: |
         cd "build engineering"
@@ -41,4 +42,8 @@ runs:
       shell: bash
       run: |
         ls -la "root project/build/${{ inputs.product }}/"
+        echo "--- sed/ ---"
+        ls -la "root project/build/${{ inputs.product }}/sed/" 2>/dev/null || echo "(no sed dir)"
+        echo "--- selinux/ ---"
+        ls -la "root project/build/${{ inputs.product }}/selinux/" 2>/dev/null || echo "(no selinux dir)"
         test -f "root project/build/${{ inputs.product }}/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }

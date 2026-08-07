@@ -79,12 +79,14 @@ prepare_iso_dir() {
     # 复制 SED 端 .smle 服务
     if [ -d "$BUILD_DIR/sed" ]; then
         cp "$BUILD_DIR/sed/"*.smle "$ISODIR/system/backend/bin/" 2>/dev/null || true
+        chmod +x "$ISODIR"/system/backend/bin/*.smle 2>/dev/null || true
         log_info "  SED daemons (.smle)"
     fi
 
     # 复制 UID 前端 .ssle 应用
     if [ -d "$BUILD_DIR/uid" ]; then
         cp "$BUILD_DIR/uid/"*.ssle "$ISODIR/system/frontend/bin/" 2>/dev/null || true
+        chmod +x "$ISODIR"/system/frontend/bin/*.ssle 2>/dev/null || true
         log_info "  UID daemons (.ssle)"
     fi
 

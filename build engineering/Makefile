@@ -154,15 +154,45 @@ initramfs:
 	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)" "$(PRODUCT_MODULES)" "$(PRODUCT)"
 	@echo "[OK] initramfs 输出: $(OUT_DIR)/initramfs.cpio.gz"
 
-# ---- 生成可启动 ISO 镜像 ----
-.PHONY: iso image
-iso image: kernel initramfs
-	@echo "[STEP] 生成可启动 ISO (产品: $(PRODUCT), 设备: $(DEVICE))..."
-	@OUTPUT_ISO="$(OUT_DIR)/ConceptOS.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
-		INITRAMFS="$(OUT_DIR)/initramfs.cpio.gz" \
-		PRODUCT="$(PRODUCT)" \
-		"$(ROOT_PROJECT)/scripts/build_image.sh"
-	@echo "[OK] 可启动 ISO 输出: $(OUT_DIR)/ConceptOS.iso"
+# ---- 构建 SED 后端 .smle 服务（backend/sub_kernel）----
+# 依赖库 backend/deps 编译到 $(OUT_DIR)/backend-deps，.smle 输出到 $(OUT_DIR)/sed/
+SED_DIR     := $(ROOT_PROJECT)/backend/sub_kernel
+SED_DEPS_BUILD := $(OUT_DIR)/backend-deps
+SED_OUT     := $(OUT_DIR)/sed
+.PHONY: sed sed-deps
+sed-deps:
+	@echo "[STEP] Build SED dependency libraries (.a)..."
+	@$(MAKE) -C "$(ROOT_PROJECT)/backend/deps" all OUTPUT_DIR="$(SED_DEPS_BUILD)" || exit 1
+	@echo "[OK] SED deps -> $(SED_DEPS_BUILD)"
+
+sed: sed-deps
+	@echo "[STEP] Build SED backend daemons (.smle, $(PRODUCT))..."
+	@$(MAKE) -C "$(SED_DIR)" all OUTPUT_DIR="$(SED_OUT)" DEPS_BUILD="$(SED_DEPS_BUILD)" || exit 1
+	@echo "[OK] SED services: $(SED_OUT)/*.smle"
+
+# ---- 编译 SELinux 策略（backend/security -> servecosys.pp）----
+SELINUX_DIR := $(ROOT_PROJECT)/backend/security
+SELINUX_OUT := $(OUT_DIR)/selinux
+.PHONY: selinux-policy
+selinux-policy:
+	@echo "[STEP] Build SELinux policy (servecosys.pp)..."
+	@$(MAKE) -C "$(SELINUX_DIR)" all OUTPUT_DIR="$(SELINUX_OUT)" || { \
+		echo "[WARN] checkpolicy/checkmodule not installed? run: apt install selinux-policy-devel"; \
+		exit 1; \
+	}
+	@test -f "$(SELINUX_OUT)/servecosys.pp" || { echo "[ERROR] servecosys.pp missing"; exit 1; }
+	@echo "[OK] SELinux policy: $(SELINUX_OUT)/servecosys.pp"
+
+# ---- 构建 UID 前端 (.ssle) ----
+UI_DIR := $(ROOT_PROJECT)/frontend/ui
+UID_OUT := $(OUT_DIR)/uid
+.PHONY: uid
+uid:
+	@echo "[STEP] Build UID frontend daemons (.ssle)..."
+	@$(MAKE) -C "$(UI_DIR)" all OUTPUT_DIR="$(UID_OUT)" || { \
+		echo "  [WARN] UID .ssle build skipped/failed (display may be limited)"; \
+	}
+	@echo "[OK] UID frontend: $(UID_OUT)/*.ssle (if buildable)"
 
 # ---- QEMU 启动验证 ----
 QEMU_ARCH ?= x86_64
@@ -171,9 +201,9 @@ qemu: iso
 	@echo "[STEP] QEMU 启动验证..."
 	@ARCH="$(QEMU_ARCH)" BUILD_DIR="$(OUT_DIR)" "$(QEMU_TEST)" -a "$(QEMU_ARCH)"
 
-# ---- 一键构建（含内核 + 模块 + initramfs + ISO）----
+# ---- 一键构建（含密钥 + 内核 + 模块 + SED + 策略 + initramfs + ISO）----
 .PHONY: full
-full: keys kernel modules initramfs iso
+full: keys kernel modules sed selinux-policy initramfs iso
 	@echo ""
 	@echo "============================================="
 	@echo " ServEcosys 构建完成"
@@ -181,6 +211,8 @@ full: keys kernel modules initramfs iso
 	@echo " ISO:          $(OUT_DIR)/ConceptOS.iso"
 	@echo " 内核:         $(OUT_DIR)/vmlinuz"
 	@echo " 模块:         $(OUT_DIR)/modules/"
+	@echo " SED服务:      $(OUT_DIR)/sed/*.smle"
+	@echo " SELinux策略:  $(OUT_DIR)/selinux/servecosys.pp"
 	@echo " 模块集:       $(PRODUCT_MODULES)"
 	@echo " 启动验证:     make qemu"
 	@echo "============================================="

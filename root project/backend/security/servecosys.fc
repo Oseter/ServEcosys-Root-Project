@@ -9,7 +9,7 @@
 /system/backend/bin(/.*)?                    gen_context(system_u:object_r:sys_dom_exec_t,s0)
 /system/backend/bin/selinux_manager\.smle     -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
 /system/backend/bin/hal_manager\.smle          -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
-/system/backend/bin/permission裁决\.smle       -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
+/system/backend/bin/permission_arbiter\.smle       -- gen_context(system_u:object_r:sys_dom_exec_t,s0)
 /system/backend/bin/oipes_client\.smle         -- gen_context(system_u:object_r:oipes_client_t,s0)
 
 # SED configuration and data

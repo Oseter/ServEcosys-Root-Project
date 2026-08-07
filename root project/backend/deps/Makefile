@@ -7,7 +7,8 @@
 CC = gcc
 AR = ar
 CFLAGS = -Wall -Wextra -O2 -std=c11 -D_GNU_SOURCE -fPIC
-OUTPUT_DIR = ../../build/backend-deps
+# 可由主 Makefile 以 OUTPUT_DIR=... 覆盖（命令行优先级高于 ?=）
+OUTPUT_DIR ?= ../../build/backend-deps
 
 DEPS = \
 	crypto \
@@ -29,13 +30,13 @@ oipes-net_SRC = oipes-net/oipes.c
 all: $(OUTPUT_DIR) $(DEPS)
 
 $(OUTPUT_DIR):
-	mkdir -p $(OUTPUT_DIR)
+	mkdir -p "$(OUTPUT_DIR)"
 
 define BUILD_DEP
 $(1): $(OUTPUT_DIR)
 	@echo "[DEPS:smle] Building $(1)..."
-	$(CC) $(CFLAGS) -c $($(1)_SRC) -o $(OUTPUT_DIR)/$(1).o
-	$(AR) rcs $(OUTPUT_DIR)/lib$(1).a $(OUTPUT_DIR)/$(1).o
+	$(CC) $(CFLAGS) -c "$(or $($(1)_SRC),$(1)/$(1).c)" -o "$(OUTPUT_DIR)/$(1).o"
+	$(AR) rcs "$(OUTPUT_DIR)/lib$(1).a" "$(OUTPUT_DIR)/$(1).o"
 	@echo "[DEPS:smle] lib$(1).a built"
 endef
 

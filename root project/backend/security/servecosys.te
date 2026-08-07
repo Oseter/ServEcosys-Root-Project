@@ -165,7 +165,7 @@ allow oipes_client_t sys_data_t:file { read write };
 # File Labeling
 ###########################################
 
-fs_use_xattr btrfs gen_context(system_u:object_r:servecosys_btrfs_t:s0);
+# fs_use_xattr btrfs gen_context(system_u:object_r:servecosys_btrfs_t:s0); (base-policy only)
 
 # System files
 /system/backend/bin(/.*)?         gen_context(system_u:object_r:sys_dom_exec_t,s0)

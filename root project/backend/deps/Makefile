@@ -19,6 +19,11 @@ DEPS = \
 	btrfs \
 	oipes-net
 
+# 源文件名覆盖：dep 名与实际 .c 文件名不一致时用 _SRC 指定（默认 <dep>/<dep>.c）
+selinux_SRC   = selinux/selinux_wrap.c
+btrfs_SRC     = btrfs/btrfs_utils.c
+oipes-net_SRC = oipes-net/oipes.c
+
 .PHONY: all clean $(DEPS)
 
 all: $(OUTPUT_DIR) $(DEPS)
@@ -29,7 +34,7 @@ $(OUTPUT_DIR):
 define BUILD_DEP
 $(1): $(OUTPUT_DIR)
 	@echo "[DEPS:smle] Building $(1)..."
-	$(CC) $(CFLAGS) -c $(1)/$(1).c -o $(OUTPUT_DIR)/$(1).o
+	$(CC) $(CFLAGS) -c $($(1)_SRC) -o $(OUTPUT_DIR)/$(1).o
 	$(AR) rcs $(OUTPUT_DIR)/lib$(1).a $(OUTPUT_DIR)/$(1).o
 	@echo "[DEPS:smle] lib$(1).a built"
 endef

@@ -30,7 +30,7 @@ runs:
           grub-pc-bin grub-efi-amd64-bin grub-common \
           qemu-system-x86 ovmf \
           openssl sbsigntool efitools \
-          checkpolicy semodule-utils
+          selinux-policy-dev checkpolicy semodule-utils
 
     - name: Build full (内核 + 模块 + SED .smle + SELinux 策略 + initramfs + ISO)
       shell: bash

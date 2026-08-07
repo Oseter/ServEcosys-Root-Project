@@ -1,16 +1,11 @@
 /**
  * ServEcosys IPC Bus - Inter-Domain Communication
  *
- * 职责：
- * - 提供 SED 与 UID 之间的安全通信
- * - 权能（capability）令牌管理
- * - 消息路由与审计
- * - 支持 binderfs/unix_socket/io_uring
+ * 职责�? * - 提供 SED �?UID 之间的安全通信
+ * - 权能（capability）令牌管�? * - 消息路由与审�? * - 支持 binderfs/unix_socket/io_uring
  *
- * 设计原则：
- * - 最小权限：每个消息携带最小权能令牌
- * - 单向响应：请求-响应模式
- * - 可审计：所有 IPC 记录日志
+ * 设计原则�? * - 最小权限：每个消息携带最小权能令�? * - 单向响应：请�?响应模式
+ * - 可审计：所�?IPC 记录日志
  * - 可替换：传输层可更换
  */
 
@@ -23,6 +18,7 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <time.h>
 

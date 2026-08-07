@@ -1,6 +1,9 @@
 #ifndef _SERVECOSYS_SELINUX_WRAP_H_
 #define _SERVECOSYS_SELINUX_WRAP_H_
 
+#include <stddef.h>
+#include <sys/types.h>
+
 typedef struct {
     char context[256];
     int  enforcing;

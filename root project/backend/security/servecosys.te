@@ -160,25 +160,3 @@ allow oipes_client_t sys_data_t:file { read write };
 
 # Note: constrain/mlsconstrain are not permitted in loadable policy
 # modules; enforce level/MLS constraints in the base policy instead.
-
-###########################################
-# File Labeling
-###########################################
-
-# fs_use_xattr btrfs gen_context(system_u:object_r:servecosys_btrfs_t:s0); (base-policy only)
-
-# System files
-/system/backend/bin(/.*)?         gen_context(system_u:object_r:sys_dom_exec_t,s0)
-/system/backend/data(/.*)?        gen_context(system_u:object_r:sys_data_t,s0)
-/system/frontend/bin(/.*)?        gen_context(system_u:object_r:uid_dom_exec_t,s0)
-/system/frontend/apps(/.*)?       gen_context(system_u:object_r:app_sandbox_t,s0)
-/system/app-data(/.*)?            gen_context(system_u:object_r:app_data_t,s0)
-
-# Boot files
-/boot/servecosys(/.*)?            gen_context(system_u:object_r:sys_data_t,s0)
-
-# Proc files
-/proc/servecosys(/.*)?            gen_context(system_u:object_r:servecosys_proc_t,s0)
-
-# Sysfs files
-/sys/kernel/servecosys(/.*)?      gen_context(system_u:object_r:servecosys_sysfs_t,s0)

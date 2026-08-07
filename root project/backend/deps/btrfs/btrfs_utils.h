@@ -1,6 +1,8 @@
 #ifndef _SERVECOSYS_BTRFS_UTILS_H_
 #define _SERVECOSYS_BTRFS_UTILS_H_
 
+#include <stdint.h>
+
 #define BTRFS_MAX_SNAPSHOTS 64
 #define BTRFS_NAME_MAX      128
 #define BTRFS_PATH_MAX      512

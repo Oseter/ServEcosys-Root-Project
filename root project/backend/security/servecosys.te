@@ -90,9 +90,6 @@ dev_read_sysfs(sys_dom_t)
 dev_read_urand(sys_dom_t)
 
 # SED can manage modules
-allow sys_dom_t servecosys_probe_module_t:module { load };
-allow sys_dom_t servecosys_pc_module_t:module { load };
-allow sys_dom_t servecosys_mobile_module_t:module { load };
 
 # SED IPC with UID
 allow sys_dom_t uid_dom_t:unix_dgram_socket { sendto recvfrom };

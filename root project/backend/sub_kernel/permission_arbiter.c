@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ServEcosys SED - Permission Adjudication Service
  *
  * 职责：
@@ -26,6 +26,8 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include "selinux_wrap.h"
+
+static int is_signed_by_official(pid_t pid);
 
 #define ARBITER_VERSION   "0.1.0"
 #define IPC_SOCK_PATH     "/var/run/servecosys_perm.sock"

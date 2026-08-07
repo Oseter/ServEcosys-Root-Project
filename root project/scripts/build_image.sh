@@ -3,13 +3,13 @@
 # ServEcosys Bootable ISO Image Builder
 #
 # 生成标准 ISO9660 + El Torito UEFI 可启动镜像
-# 概念OS (ConceptOS) - ServEcosys 系操作系统标准概念呈现
-# 输出: build/ConceptOS.iso
+# 概念OS (ConceptOS) - ServEcosys 系列操作系统标准品类镜像
+# 输出: build/$PRODUCT/ConceptOS.iso (默认按产品分目录)
 #
 # iOS 设备可直接从 GitHub Actions 下载 .iso 文件
 # 用法:
-#   ./build_image.sh                   生成默认 ISO
-#   ./build_image.sh -o myos.iso       指定输出
+#   ./build_image.sh                  生成默认 ISO
+#   ./build_image.sh -o myos.iso      指定输出
 #   ./build_image.sh -k vmlinuz       指定内核
 #   ./build_image.sh -i initramfs.gz  指定 initramfs
 #
@@ -18,7 +18,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_ROOT/build"
+PRODUCT="${PRODUCT:-servecsys_qemu}"
+BUILD_DIR="$PROJECT_ROOT/build/$PRODUCT"
 OUTPUT_ISO="${OUTPUT_ISO:-$BUILD_DIR/ConceptOS.iso}"
 
 KERNEL="${KERNEL:-$BUILD_DIR/vmlinuz}"
@@ -57,7 +58,7 @@ prepare_iso_dir() {
     rm -rf "$ISODIR"
     mkdir -p "$ISODIR"/{boot,EFI/BOOT,system/backend/bin,system/frontend/bin,system/frontend/apps,system/backend/etc/selinux,bin,sbin,etc}
 
-    # 拷贝内核
+    # 复制内核
     if [ -f "$KERNEL" ]; then
         cp "$KERNEL" "$ISODIR/boot/vmlinuz"
         log_info "  Kernel: $KERNEL"
@@ -66,7 +67,7 @@ prepare_iso_dir() {
         exit 1
     fi
 
-    # 拷贝 initramfs
+    # 复制 initramfs
     if [ -f "$INITRAMFS" ]; then
         cp "$INITRAMFS" "$ISODIR/boot/initramfs.cpio.gz"
         log_info "  Initramfs: $INITRAMFS"
@@ -75,25 +76,25 @@ prepare_iso_dir() {
         exit 1
     fi
 
-    # 拷贝 SED 后端 .smle 服务
+    # 复制 SED 端 .smle 服务
     if [ -d "$BUILD_DIR/sed" ]; then
         cp "$BUILD_DIR/sed/"*.smle "$ISODIR/system/backend/bin/" 2>/dev/null || true
         log_info "  SED daemons (.smle)"
     fi
 
-    # 拷贝 UID 前端 .ssle 服务
+    # 复制 UID 前端 .ssle 应用
     if [ -d "$BUILD_DIR/uid" ]; then
         cp "$BUILD_DIR/uid/"*.ssle "$ISODIR/system/frontend/bin/" 2>/dev/null || true
         log_info "  UID daemons (.ssle)"
     fi
 
-    # 拷贝 SELinux 策略
+    # 复制 SELinux 策略
     if [ -d "$BUILD_DIR/selinux" ]; then
         cp "$BUILD_DIR/selinux/"* "$ISODIR/system/backend/etc/selinux/" 2>/dev/null || true
     fi
 
-    # 安装 system 集成层（真正的 /sbin/init + 启动脚本）
-    # 注意：ISO9660 不支持符号链接，这里用实拷贝 + 顶层副本
+    # 安装 system 再生层（含 /sbin/init + 启动脚本）
+    # 注意：ISO9660 不支持符号链接，所以采用实文件 + 平铺副本
     if [ -d "$PROJECT_ROOT/system" ]; then
         cp -r "$PROJECT_ROOT/system/." "$ISODIR/system/"
         chmod +x "$ISODIR"/system/sysinit "$ISODIR"/system/*.sh 2>/dev/null || true
@@ -113,7 +114,8 @@ prepare_iso_dir() {
 
     # 版本信息
     {
-        echo "概念OS (ConceptOS) - ServEcosys 系操作系统标准与概念呈现"
+        echo "概念OS (ConceptOS) - ServEcosys 系列操作系统标准品类镜像"
+        echo "Product: $PRODUCT"
         echo "Version: 0.1.0 'Genesis'"
         echo "Build: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Kernel: $(basename "${KERNEL:-unknown}")"
@@ -139,7 +141,7 @@ create_efi_boot_image() {
         return
     fi
 
-    # 使用 mtools 操作 FAT 镜像
+    # 使用 mtools 写入 FAT 镜像
     if [ -f "$BOOTLOADER" ]; then
         mmd -i "$EFI_IMG" "::EFI/BOOT" 2>/dev/null || true
         mcopy -i "$EFI_IMG" "$BOOTLOADER" "::EFI/BOOT/BOOTX64.EFI" 2>/dev/null
@@ -160,11 +162,11 @@ build_iso() {
     mkdir -p "$(dirname "$OUTPUT_ISO")"
 
     if command -v grub-mkrescue &> /dev/null; then
-        # 使用 GRUB 创建完整可启动 ISO
+        # 使用 GRUB 作为引导加载器生成 ISO
         log_info "  Using grub-mkrescue..."
         grub-mkrescue -o "$OUTPUT_ISO" "$ISODIR" 2>/dev/null
     else
-        # 使用 xorriso 手动创建 UEFI 可启动 ISO
+        # 使用 xorriso 手动生成 UEFI 启动 ISO
         log_info "  Using xorriso..."
         xorriso -as mkisofs \
             -iso-level 3 \
@@ -204,7 +206,7 @@ verify_iso() {
 
     echo ""
     log_info "============================================="
-    log_info " QEMU 测试命令:"
+    log_info " QEMU 启动验证:"
     echo ""
     echo "    qemu-system-x86_64 \\"
     echo "      -cdrom $OUTPUT_ISO \\"
@@ -213,7 +215,7 @@ verify_iso() {
     echo "      -bios /usr/share/ovmf/OVMF.fd \\"
     echo "      -vga virtio -display gtk"
     echo ""
-    echo "    命令行模式:"
+    echo "    无界面模式:"
     echo "    qemu-system-x86_64 \\"
     echo "      -cdrom $OUTPUT_ISO \\"
     echo "      -m 2G \\"
@@ -224,7 +226,7 @@ verify_iso() {
     echo "      -initrd /boot/initramfs.cpio.gz \\"
     echo "      -append \"console=ttyS0\""
     echo ""
-    log_info " iOS 下载后可用 UTM 或 aQEMU 加载此 ISO"
+    log_info " iOS 下载后用 UTM 或 aQEMU 加载此 ISO"
     log_info "============================================="
 }
 
@@ -250,7 +252,7 @@ main() {
                 echo "Generate bootable ISO with UEFI support"
                 echo ""
                 echo "Usage: $0 [options]"
-                echo "  -o <file>     Output ISO path (default: build/ConceptOS.iso)"
+                echo "  -o <file>     Output ISO path (default: build/<PRODUCT>/ConceptOS.iso)"
                 echo "  -k <file>     Kernel image path"
                 echo "  -i <file>     Initramfs path"
                 echo "  -b <file>     Bootloader EFI path"
@@ -265,6 +267,7 @@ main() {
     echo " ServEcosys ISO Image Builder"
     echo "============================================="
     echo ""
+    log_info "Product: $PRODUCT"
     log_info "Output:  $OUTPUT_ISO"
     log_info "Kernel:  ${KERNEL:-auto}"
     log_info "Initrd:  ${INITRAMFS:-auto}"

@@ -5,6 +5,14 @@ inputs:
     description: GitHub token (defaults to github.token)
     required: false
     default: ${{ github.token }}
+  product:
+    description: Product to build (servecsys_pc | servecsys_mobile | servecsys_qemu)
+    required: false
+    default: servecosys_qemu
+  device:
+    description: Device to build for (qemu-x86_64 | reference-x86_64)
+    required: false
+    default: qemu-x86_64
 runs:
   using: composite
   steps:
@@ -27,10 +35,10 @@ runs:
       shell: bash
       run: |
         cd "build engineering"
-        make full
+        make full PRODUCT=${{ inputs.product }} DEVICE=${{ inputs.device }}
 
     - name: Show artifacts
       shell: bash
       run: |
-        ls -la "root project/build/"
-        test -f "root project/build/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }
+        ls -la "root project/build/${{ inputs.product }}/"
+        test -f "root project/build/${{ inputs.product }}/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }

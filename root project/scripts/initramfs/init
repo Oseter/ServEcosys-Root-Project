@@ -1,15 +1,10 @@
 #!/bin/sh
 #
-# ServEcosys Initramfs Init Script v0.2.0
+# ServEcosys Initramfs Init Script v0.2.0 (product-driven)
 #
-# 职责：
-# 1. 挂载伪文件系统
-# 2. 加载必要内核模块（btrfs, hardware probe）
-# 3. 硬件指纹采集与验证
-# 4. 搜索并挂载 Btrfs 根文件系统
-# 5. 快照配置解析与快照引导
-# 6. 切换到真实根文件系统（/sbin/init -> system/sysinit，完成 SED->UID 启动）
-#
+# 鑱岃矗
+# 1. 鎸傝浇浼枃浠剁郴缁?# 2. 鎸変骇鍝侀厤缃?(product.conf) 鍔犺浇鍐呮牳妯″潡锛堝惎鍔ㄩ摼鐢卞唴鏍告ā鍧楀喅瀹氾細PC/绉诲姩妯″潡鍚勫紓锛?# 3. 纭欢鎸囩汗閲囬泦涓庨獙璇?# 4. 鎸傝浇 Btrfs 鏍规枃浠剁郴缁?# 5. 蹇収鍚姩閰嶇疆锛堝啀鐢熻兘鍔涳級
+# 6. 鍒囨崲鏍瑰埌鐪熷疄鏂囦欢绯荤粺锛?sbin/init -> system/sysinit: SED->UID 鍒嗗眰锛?#
 
 set -e
 
@@ -17,9 +12,10 @@ export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export ROOT_MOUNT=/mnt/root
 export SNAPSHOT_CONF=/boot/servecosys/snapshot.conf
 export FINGERPRINT_SYSFS=/sys/kernel/servecosys/fingerprint
+export PRODUCT_CONF=/etc/servecosys/product.conf
 
 echo "============================================="
-echo " ServEcosys initramfs v0.2.0"
+echo " ServEcosys initramfs v0.2.0 (product-driven)"
 echo "============================================="
 echo ""
 
@@ -39,12 +35,46 @@ mount -t tmpfs tmpfs /run
 mknod -m 660 /dev/console c 5 1 2>/dev/null || true
 
 # ============================================
-# [2/7] Essential kernel modules
+# [2/7] Kernel modules (product-driven)
 # ============================================
-echo "[2/7] Loading kernel modules..."
-modprobe -q btrfs 2>/dev/null || echo "  [WARN] btrfs module not available (built-in?)"
-modprobe -q servecosys_probe 2>/dev/null || echo "  [WARN] servecosys_probe module not available"
-modprobe -q servecosys_guard 2>/dev/null || echo "  [WARN] servecosys_guard module not available"
+echo "[2/7] Loading kernel modules (product profile)..."
+# 鍚姩閾剧敱 product.conf 閲岀殑 PRODUCT_MODULES 鍐冲畾锛?#   渚嬪 PC/QEMU 浜у搧 => guard probe pc
+#        绉诲姩浜у搧      => guard probe mobile
+# 妯″潡宸叉寜浜у搧杩囨护杩?initramfs 鐨?/lib/modules/
+PRODUCT_MODULES=""
+if [ -f "$PRODUCT_CONF" ]; then
+    PRODUCT_MODULES=$(grep "^PRODUCT_MODULES=" "$PRODUCT_CONF" | cut -d= -f2)
+    PRODUCT_NAME=$(grep "^PRODUCT=" "$PRODUCT_CONF" | cut -d= -f2)
+    echo "  Product:   ${PRODUCT_NAME:-unknown}"
+    echo "  Module set: ${PRODUCT_MODULES:-none}"
+else
+    echo "  [WARN] $PRODUCT_CONF not found, using default set"
+    PRODUCT_MODULES="guard probe"
+fi
+
+# guard 涓哄唴寤鸿繘鍐呮牳锛沺robe/妯″潡瀛愰泦 涓哄彲鍔犺浇 .ko锛屾寜妯″潡闆嗛€愪釜灏濊瘯鍔犺浇
+for m in $PRODUCT_MODULES; do
+    case "$m" in
+        guard)
+            # 鍐呭缓妯″潡锛屾棤闇€ modprobe
+            echo "  guard: built-in"
+            ;;
+        *)
+            if modprobe -q "servecsys_$m" 2>/dev/null; then
+                echo "  loaded: servecsys_$m"
+            elif modprobe -q "$m" 2>/dev/null; then
+                echo "  loaded: $m"
+            else
+                echo "  [WARN] $m module not loaded (built-in or missing)"
+            fi
+            ;;
+    esac
+done
+
+# 鏍稿績鏂囦欢绯荤粺妯″潡锛堜换涓€浜у搧閮藉彲鑳界敤鍒帮級
+modprobe -q btrfs 2>/dev/null || echo "  [WARN] btrfs not available (built-in?)"
+modprobe -q servecsys_probe 2>/dev/null || echo "  [INFO] servecsys_probe not separate (built-in or absent)"
+modprobe -q servecsys_guard 2>/dev/null || echo "  [INFO] servecsys_guard is built-in"
 
 # ============================================
 # [3/7] Hardware fingerprint
@@ -107,11 +137,8 @@ if [ -z "$ROOT_DEV" ]; then
 fi
 
 if [ -z "$ROOT_DEV" ]; then
-    # 概念OS live 模式兜底：
-    # ISO 介质上没有 btrfs 根，但 initramfs 自带了完整 system/ 层与
-    # .smle/.ssle 产物。在 tmpfs 上重建根，直接切到 /sbin/init -> /system/sysinit，
-    # 使概念OS 能从 live ISO 真启动（无需外部磁盘）。
-    echo "[4/7] No btrfs root found - falling back to live OS mode"
+    # ServEcosys 娲讳綋妯″紡锛坙ive ISO锛夛細
+    # ISO 涓病鏈?btrfs 鏍癸紝姝ゆ椂 initramfs 鑷甫瀹屾暣 system/ 灞?    # 锛?smle/.ssle 瀛樻斁锛夈€傚湪 tmpfs 涓嬮噸寤烘牴锛岀洿鎺ョЩ浜?/sbin/init -> /system/sysinit銆?    # 璁?ServEcosys 鑳戒粠 live ISO 鍚姩锛屼粠鑰岃鐩栧閮ㄧ鐩樺満鏅€?    echo "[4/7] No btrfs root found - falling back to live OS mode"
     if [ -d /system ] && [ -x /system/sysinit ]; then
         echo "  Live system layer found in initramfs"
         echo "  Building tmpfs root at /live..."
@@ -123,11 +150,11 @@ if [ -z "$ROOT_DEV" ]; then
         for d in proc sys dev run tmp sbin bin; do mkdir -p "/live/$d"; done
         cp -a /bin/. /live/bin/ 2>/dev/null || true
 
-        # /sbin/init -> /system/sysinit（tmpfs 支持符号链接）
+        # /sbin/init -> /system/sysinit锛泃mpfs 鏀寔鐩稿閾炬帴
         ln -sf /system/sysinit /live/sbin/init
         chmod +x /live/system/sysinit /live/system/*.sh 2>/dev/null || true
 
-        # 移动伪文件系统到新根
+        # 鎼Щ浼枃浠剁郴缁熷埌鏂版牴
         for m in proc sys dev run; do
             mount --move "/$m" "/live/$m" 2>/dev/null || true
         done

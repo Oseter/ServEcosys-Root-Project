@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-conceptos
+        with:
+          product: servecosys_qemu
+          device: qemu-x86_64
       - name: QEMU boot smoke test
         shell: bash
         timeout-minutes: 5
@@ -22,8 +25,8 @@ jobs:
           set +e
           timeout --signal=KILL 110 qemu-system-x86_64 \
             -machine q35 -m 2048 -smp 2 \
-            -kernel "../root project/build/vmlinuz" \
-            -initrd "../root project/build/initramfs.cpio.gz" \
+            -kernel "../root project/build/servecosys_qemu/vmlinuz" \
+            -initrd "../root project/build/servecosys_qemu/initramfs.cpio.gz" \
             -append "console=ttyS0 loglevel=6 rdinit=/init panic=-1 earlyprintk=serial" \
             -display none -monitor none -serial file:boot.log \
             -no-reboot
@@ -44,8 +47,8 @@ jobs:
         with:
           name: conceptos
           path: |
-            root project/build/ConceptOS.iso
-            root project/build/vmlinuz
-            root project/build/initramfs.cpio.gz
+            root project/build/servecosys_qemu/ConceptOS.iso
+            root project/build/servecosys_qemu/vmlinuz
+            root project/build/servecosys_qemu/initramfs.cpio.gz
           compression-level: 0
           retention-days: 30

@@ -1,33 +1,37 @@
 #!/bin/bash
 #
-# ServEcosys - 组装 initramfs
+# ServEcosys - 打包 initramfs（产品驱动）
 #
 # 用法:
-#   ./build_initramfs.sh <OUT_DIR> [INITRAMFS_SRC]
+#   ./build_initramfs.sh <OUT_DIR> [INITRAMFS_SRC] [PRODUCT_MODULES] [PRODUCT]
 #
-# 说明：
-#   - 以 scripts/initramfs/ 为骨架，打入 /sbin/init
-#   - 若存在已构建的内核模块，一并打入 /lib/modules/
-#   - 若存在已构建的系统集成层（system/），一并打入
-#   - 产物: <OUT_DIR>/initramfs.cpio.gz
+# 说明:
+#   - 以 scripts/initramfs/ 为骨架，组装 /sbin/init
+#   - 嵌入静态 busybox，提供 sh/mount/switch_root 等必备工具
+#   - 嵌入按产品过滤后的内核模块（来自 <OUT_DIR>/modules/，Makefile 已按 PRODUCT_MODULES 收集）
+#   - 嵌入 system 再生层（system/）到 /system
+#   - 生成 /etc/servecosys/product.conf：记录产品名与模块集，驱动 /init 的模块加载
+#   - 输出: <OUT_DIR>/initramfs.cpio.gz
 #
 
 set -e
 
-OUT_DIR="${1:?用法: $0 <OUT_DIR> [INITRAMFS_SRC]}"
+OUT_DIR="${1:?用法: $0 <OUT_DIR> [INITRAMFS_SRC] [PRODUCT_MODULES] [PRODUCT]}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 INITRAMFS_SRC="${2:-$SCRIPT_DIR/initramfs}"
+PRODUCT_MODULES="${3:-guard probe}"
+PRODUCT="${4:-servecsys_qemu}"
 STAGING="$(mktemp -d)"
 
-echo "[initramfs] 组装 initramfs..."
+echo "[initramfs] 打包 initramfs (product: $PRODUCT, modules: $PRODUCT_MODULES)..."
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # make OUT_DIR absolute so subshell cd (cpio/gzip) cannot break it
 
 # 1. 复制骨架
 cp -a "$INITRAMFS_SRC/." "$STAGING/"
 chmod +x "$STAGING/init" 2>/dev/null || true
-mkdir -p "$STAGING/bin" "$STAGING/sbin" "$STAGING/lib/modules" "$STAGING/dev" "$STAGING/proc" "$STAGING/sys" "$STAGING/tmp"
+mkdir -p "$STAGING/bin" "$STAGING/sbin" "$STAGING/lib/modules" "$STAGING/dev" "$STAGING/proc" "$STAGING/sys" "$STAGING/tmp" "$STAGING/etc/servecosys"
 
 # 1.1 嵌入静态 busybox（提供 sh/mount/cp/switch_root 等必备工具）
 BUSYBOX_BIN="$(command -v busybox 2>/dev/null || echo /bin/busybox)"
@@ -36,24 +40,29 @@ if [ -f "$BUSYBOX_BIN" ]; then
     cp -L "$BUSYBOX_BIN" "$STAGING/bin/busybox"
     chmod +x "$STAGING/bin/busybox"
     ( cd "$STAGING/bin" && for a in sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead; do ln -sf busybox "$a"; done )
-    # /sbin/init 保留骨架 init；busybox init 需要的 applets 也放 /sbin
+    # /sbin/init 指向骨架 init（busybox init 所需的 applets 也放 /sbin）
     ( cd "$STAGING/sbin" && for a in init switch_root modprobe; do ln -sf ../bin/busybox "$a" 2>/dev/null || true; done )
 else
-    echo "[initramfs]   [WARN] 未找到 busybox，initramfs 将缺少用户态工具"
+    echo "[initramfs]   [WARN] 未找到 busybox，initramfs 会缺少用户态工具"
 fi
 
-# 1.2 骨架根目录符号链接（/sbin/init -> ../bin/... 由 init 内部处理）
+# 1.2 生成产品配置：product.conf 驱动 /init 按产品加载内核模块
+{
+    echo "# ServEcosys 产品配置（驱动 /init 的模块加载与启动流程）"
+    echo "PRODUCT=$PRODUCT"
+    echo "PRODUCT_MODULES=$PRODUCT_MODULES"
+} > "$STAGING/etc/servecosys/product.conf"
 
-# 2. 打入系统集成层（live OS 模式依赖 /system）
+# 2. 嵌入系统再生层（live OS 模式）到 /system
 if [ -d "$PROJECT_ROOT/system" ]; then
-    echo "[initramfs]   集成 system/ 层"
+    echo "[initramfs]   嵌入 system/ 层"
     cp -a "$PROJECT_ROOT/system" "$STAGING/system"
     chmod +x "$STAGING/system/sysinit" "$STAGING/system/"*.sh 2>/dev/null || true
 fi
 
-# 3. 打入已构建的内核模块
+# 3. 嵌入已按产品过滤的内核模块（Makefile 的 modules 目标已收集到 <OUT_DIR>/modules/）
 if [ -d "$OUT_DIR/modules" ]; then
-    echo "[initramfs]   集成内核模块"
+    echo "[initramfs]   嵌入内核模块 (已按 $PRODUCT_MODULES 过滤)"
     cp -a "$OUT_DIR/modules/." "$STAGING/lib/modules/"
 fi
 
@@ -61,4 +70,4 @@ fi
 ( cd "$STAGING" && find . | cpio -H newc -o 2>/dev/null | gzip > "$OUT_DIR/initramfs.cpio.gz" )
 
 rm -rf "$STAGING"
-echo "[initramfs] 完成: $OUT_DIR/initramfs.cpio.gz"
+echo "[initramfs] 输出: $OUT_DIR/initramfs.cpio.gz"

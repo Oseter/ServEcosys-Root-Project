@@ -1,38 +1,38 @@
-﻿#
-# ServEcosys Root Project - 顶层统一构建入口
+#
+# ServEcosys Root Project - 统一构建系统
 #
 # 用法:
 #   make help                          # 查看所有目标
-#   make full                          # 一键完整构建 (密钥+内核+模块+initramfs+ISO)
-#   make clean                         # 清理构建产物
+#   make full                          # 一键构建 (密钥+内核+模块+initramfs+ISO)
+#   make clean                         # 清理所有构建
 #
-# 关键变量:
+# 关键参数:
 #   PRODUCT   = servecosys_pc | servecosys_mobile | servecosys_qemu
 #   DEVICE    = qemu-x86_64 | reference-x86_64
-#   LINUX_SRC = 内核源码树路径 (默认 ../kernel-src, 无空格路径)
-#   OUT_DIR   = 构建输出目录 (默认 ../root project/build)
+#   LINUX_SRC = 内核源码路径 (默认 ../kernel-src, 无空格路径)
+#   OUT_DIR   = 输出目录 (默认 ../root project/build/$(PRODUCT)，按产品分目录)
 #   ARCH      = x86_64 | arm64
 #
 
-# ---- 默认配置 ----
+# ---- 默认参数 ----
 SHELL := /bin/bash
 PRODUCT ?= servecosys_qemu
 DEVICE  ?= qemu-x86_64
 
-# 操作系统底层架构源码根（与工程组织并列，位于上层）
+# 系统底座（源目录与工程组织协调，位于上层）
 ROOT_PROJECT ?= ../root project
 REPO_ROOT    ?= ..
-# 内核源码必须放在无空格的路径（Linux kbuild 拒绝在含空格目录下编译）
+# 内核源码（不能含空格的路径，Linux kbuild 拒绝在含空格的目录下编译）
 LINUX_SRC ?= $(REPO_ROOT)/kernel-src
-# 输出目录统一到 root project/build，与 scripts/ 下所有构建脚本的默认位置一致
-OUT_DIR ?= $(ROOT_PROJECT)/build
+# 输出目录统一到 root project/build/$(PRODUCT)：按产品分目录，互不干扰
+OUT_DIR ?= $(ROOT_PROJECT)/build/$(PRODUCT)
 
 # 产品定义文件
 PRODUCTS_DIR := products
 DEVICES_DIR  := devices
 -include $(PRODUCTS_DIR)/$(PRODUCT).mk
 
-# ---- 内部变量 ----
+# ---- 内部路径 ----
 KERNEL_MODULES := $(ROOT_PROJECT)/kernel/modules
 KERNEL_CORE    := $(ROOT_PROJECT)/kernel/core
 BOOT_DIR       := $(ROOT_PROJECT)/boot
@@ -40,38 +40,38 @@ INITRAMFS_DIR  := $(ROOT_PROJECT)/scripts/initramfs
 QEMU_TEST      := $(ROOT_PROJECT)/scripts/qemu_test.sh
 PATCHES_DIR    := $(ROOT_PROJECT)/kernel/patches
 
-# ---- 帮助 ----
+# ---- 目标 ----
 .PHONY: help
 help:
 	@echo "ServEcosys Root Project 构建系统"
 	@echo ""
-	@echo "用法: make [PRODUCT=servecosys_pc|servecosys_mobile|servecosys_qemu] [DEVICE=qemu-x86_64] <target>"
+	@echo "用法: make [PRODUCT=servecsys_pc|servecsys_mobile|servecsys_qemu] [DEVICE=qemu-x86_64] <target>"
 	@echo ""
 	@echo "目标:"
-	@echo "  full        一键完整构建 (密钥+内核+模块+initramfs+ISO)"
-	@echo "  all         构建内核+模块+initramfs (不含 ISO)"
-	@echo "  bootloader  仅编译 UEFI 引导程序"
-	@echo "  kernel      仅编译 Linux 内核"
-	@echo "  modules     仅编译内核模块 (guard/probe/pc/mobile)"
-	@echo "  initramfs   组装 initramfs"
-	@echo "  iso         生成可启动 ISO 镜像"
-	@echo "  qemu        在 QEMU 中启动验证"
-	@echo "  kernel-src  获取 Linux 内核源码"
-	@echo "  keys        生成签名密钥"
-	@echo "  sign        对内核签名"
-	@echo "  clean       清理构建产物"
+	@echo "  full       一键构建 (密钥+内核+模块+initramfs+ISO)"
+	@echo "  all        构建内核+模块+initramfs (不含 ISO)"
+	@echo "  bootloader 构建 UEFI 引导加载器"
+	@echo "  kernel     构建 Linux 内核"
+	@echo "  modules    按产品模块集构建内核模块 (guard/probe/pc/mobile)"
+	@echo "  initramfs  打包 initramfs"
+	@echo "  iso        生成可启动 ISO 镜像"
+	@echo "  qemu       用 QEMU 启动验证"
+	@echo "  kernel-src 获取 Linux 内核源码"
+	@echo "  keys       生成签名密钥"
+	@echo "  sign       给内核签名"
+	@echo "  clean      清理所有构建"
 	@echo ""
-	@echo "变量:"
-	@echo "  PRODUCT   产品名   (默认 servecosys_qemu)"
-	@echo "  DEVICE    设备名   (默认 qemu-x86_64)"
-	@echo "  LINUX_SRC 内核源码树 (默认 ../kernel-src, 无空格)"
-	@echo "  OUT_DIR   输出目录 (默认 ../root project/build)"
+	@echo "参数:"
+	@echo "  PRODUCT  产品名   (默认 servecosys_qemu)"
+	@echo "  DEVICE   设备名   (默认 qemu-x86_64)"
+	@echo "  LINUX_SRC 内核源码路径 (默认 ../kernel-src, 无空格)"
+	@echo "  OUT_DIR  输出目录 (默认 ../root project/build/$(PRODUCT))"
 
-# ---- 检查内核源码存在性 ----
+# ---- 检查内核源码 ----
 .PHONY: check-kernel-src
 check-kernel-src:
 	@if [ ! -d "$(LINUX_SRC)" ]; then \
-		echo "[ERROR] 内核源码树不存在: $(LINUX_SRC)"; \
+		echo "[ERROR] 内核源码不存在: $(LINUX_SRC)"; \
 		echo "  请先运行: make kernel-src"; \
 		exit 1; \
 	fi
@@ -86,7 +86,7 @@ kernel-src:
 		git clone --depth 1 --branch "linux-$(KERNEL_VER).y" \
 			https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$(LINUX_SRC)"; \
 		if [ ! -d "$(LINUX_SRC)" ]; then \
-			echo "[WARN] git 克隆失败，尝试 tarball 下载..."; \
+			echo "[WARN] git 克隆失败，改用 tarball 方式..."; \
 			wget -c "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$(KERNEL_VER).tar.xz" -O /tmp/linux-$(KERNEL_VER).tar.xz && \
 			tar -xJf /tmp/linux-$(KERNEL_VER).tar.xz -C "$(dir $(LINUX_SRC))" && \
 			mv "$(dir $(LINUX_SRC))linux-$(KERNEL_VER)" "$(LINUX_SRC)"; \
@@ -94,61 +94,65 @@ kernel-src:
 	fi
 	@echo "[OK] 内核源码就绪: $(LINUX_SRC)"
 
-# ---- 应用内核补丁 (guard/pc/mobile/probe 集成) ----
+# ---- 应用内核补丁 (guard/pc/mobile/probe 等) ----
 .PHONY: kernel-patch
 kernel-patch: check-kernel-src
 	@echo "[STEP] 应用 ServEcosys 内核补丁..."
 	@"$(ROOT_PROJECT)/scripts/apply_kernel_patch.sh" "$(LINUX_SRC)" "$(PATCHES_DIR)" || { \
-		echo "[WARN] 补丁应用失败（源码版本不匹配时正常），继续..."; \
+		echo "[WARN] 补丁应用失败，源码版本不匹配时继续构建..."; \
 	}
-	@echo "[OK] 内核补丁处理完成"
+	@echo "[OK] 内核补丁应用完毕"
 
-# ---- 编译 bootloader ----
+# ---- 构建 bootloader ----
 .PHONY: bootloader
 bootloader:
-	@echo "[STEP] 编译 UEFI 引导程序..."
+	@echo "[STEP] 构建 UEFI 引导加载器..."
 	@$(MAKE) -C "$(BOOT_DIR)" ARCH=$(BOOT_ARCH)
-	@echo "[OK] bootloader 完成: $(BOOT_DIR)/bootloader.efi"
+	@echo "[OK] bootloader 输出: $(BOOT_DIR)/bootloader.efi"
 
-# ---- 编译内核 ----
+# ---- 构建内核 ----
 .PHONY: kernel
 kernel: kernel-src check-kernel-src kernel-patch
-	@echo "[STEP] 配置内核 ($(KERNEL_DEFCONFIG))..."
+	@echo "[STEP] 构建内核 ($(KERNEL_DEFCONFIG))..."
 	@cp "$(KERNEL_CORE)/servecosys_defconfig" "$(LINUX_SRC)/.config"
 	@$(MAKE) -C "$(LINUX_SRC)" olddefconfig
-	@echo "  [DIAG] .config 中的 SERVECOSYS 符号（含未设置）:"
+	@echo "  [DIAG] .config 中的 SERVECOSYS 符号（若未配置）:"
 	@grep -E '^#? ?CONFIG_SERVECOSYS' "$(LINUX_SRC)/.config" || true
 	@test "$$(grep -c '^CONFIG_SERVECOSYS_CORE=y' "$(LINUX_SRC)/.config")" -ge 1 || { \
-		echo "[ERROR] CONFIG_SERVECOSYS_CORE 未启用——Kconfig 挂接未生效，请查看上方 apply_kernel_patch 诊断"; \
+		echo "[ERROR] CONFIG_SERVECOSYS_CORE 未配置。Kconfig 交互未生效？请查看上方 apply_kernel_patch 输出"; \
 		exit 1; \
 	}
-	@echo "[STEP] 编译内核 bzImage..."
+	@echo "[STEP] 构建内核 bzImage..."
 	@$(MAKE) -C "$(LINUX_SRC)" -j$$(nproc) bzImage
 	@mkdir -p "$(OUT_DIR)"
 	@cp "$(LINUX_SRC)/arch/x86/boot/bzImage" "$(OUT_DIR)/vmlinuz"
-	@echo "[OK] 内核完成: $(OUT_DIR)/vmlinuz"
+	@echo "[OK] 内核输出: $(OUT_DIR)/vmlinuz"
 
-# ---- 编译内核模块（guard 已内建进内核；probe/pc/mobile 为可插拔 .ko） ----
-# 逐个 M= 指向模块目录，各自独立构建（仅自身 obj-m，不触发整树 defconfig 驱动）
+# ---- 按产品模块集构建内核模块（guard 为内建进内核，probe/pc/mobile 为可加载 .ko）----
+# 模块目录: kernel/servecosys/modules/<guard|probe|pc|mobile>/
+# PRODUCT_MODULES 决定收集哪些模块（如 qemu: guard probe pc / mobile: guard probe mobile）
 .PHONY: modules
 modules: kernel
 	@echo "[STEP] Build kernel modules (product: $(PRODUCT), set: $(PRODUCT_MODULES))..."
 	@$(MAKE) -C "$(LINUX_SRC)" -j$$(nproc) modules || exit 1
-	@mkdir -p "$(OUT_DIR)/modules"
-	@find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \;
-	@n=$$(find "$(LINUX_SRC)/kernel/servecosys" -name '*.ko' 2>/dev/null | wc -l); \
-	echo "[OK] kernel modules collected: $(OUT_DIR)/modules/ ($$n .ko)"; \
+	@rm -rf "$(OUT_DIR)/modules"; mkdir -p "$(OUT_DIR)/modules"
+	@for m in $(PRODUCT_MODULES); do \
+		if [ -d "$(LINUX_SRC)/kernel/servecosys/modules/$$m" ]; then \
+			find "$(LINUX_SRC)/kernel/servecosys/modules/$$m" -name '*.ko' -exec cp {} "$(OUT_DIR)/modules/" \; 2>/dev/null; \
+		fi; \
+	done
+	@n=$$(find "$(OUT_DIR)/modules" -name '*.ko' 2>/dev/null | wc -l); \
+	echo "[OK] kernel modules for $(PRODUCT): $(OUT_DIR)/modules/ ($$n .ko, set: $(PRODUCT_MODULES))"; \
 	if [ "$$n" -eq 0 ]; then \
-		echo "[ERROR] no .ko generated, check CONFIG_SERVECOSYS_PROBE/PC/MOBILE=m"; \
-		exit 1; \
+		echo "[WARN] no .ko in this product module set (guard may be built-in only)"; \
 	fi
 
-# ---- 组装 initramfs ----
+# ---- 打包 initramfs ----
 .PHONY: initramfs
 initramfs:
-	@echo "[STEP] 组装 initramfs..."
-	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)"
-	@echo "[OK] initramfs 完成: $(OUT_DIR)/initramfs.cpio.gz"
+	@echo "[STEP] 打包 initramfs (product: $(PRODUCT), set: $(PRODUCT_MODULES))..."
+	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)" "$(PRODUCT_MODULES)" "$(PRODUCT)"
+	@echo "[OK] initramfs 输出: $(OUT_DIR)/initramfs.cpio.gz"
 
 # ---- 生成可启动 ISO 镜像 ----
 .PHONY: iso image
@@ -156,27 +160,29 @@ iso image: kernel initramfs
 	@echo "[STEP] 生成可启动 ISO (产品: $(PRODUCT), 设备: $(DEVICE))..."
 	@OUTPUT_ISO="$(OUT_DIR)/ConceptOS.iso" KERNEL="$(OUT_DIR)/vmlinuz" \
 		INITRAMFS="$(OUT_DIR)/initramfs.cpio.gz" \
+		PRODUCT="$(PRODUCT)" \
 		"$(ROOT_PROJECT)/scripts/build_image.sh"
-	@echo "[OK] 可启动 ISO 完成: $(OUT_DIR)/ConceptOS.iso"
+	@echo "[OK] 可启动 ISO 输出: $(OUT_DIR)/ConceptOS.iso"
 
 # ---- QEMU 启动验证 ----
 QEMU_ARCH ?= x86_64
 .PHONY: qemu
 qemu: iso
 	@echo "[STEP] QEMU 启动验证..."
-	@ARCH="$(QEMU_ARCH)" "$(QEMU_TEST)" -a "$(QEMU_ARCH)"
+	@ARCH="$(QEMU_ARCH)" BUILD_DIR="$(OUT_DIR)" "$(QEMU_TEST)" -a "$(QEMU_ARCH)"
 
-# ---- 一键完整构建（产出可启动 ISO） ----
+# ---- 一键构建（含内核 + 模块 + initramfs + ISO）----
 .PHONY: full
 full: keys kernel modules initramfs iso
 	@echo ""
 	@echo "============================================="
-	@echo " ServEcosys 完整构建完成"
+	@echo " ServEcosys 构建完成"
 	@echo " 产品: $(PRODUCT) | 设备: $(DEVICE)"
-	@echo " 可启动镜像: $(OUT_DIR)/ConceptOS.iso"
-	@echo " 内核:       $(OUT_DIR)/vmlinuz"
-	@echo " 模块:       $(OUT_DIR)/modules/"
-	@echo " 启动测试:   make qemu"
+	@echo " ISO:          $(OUT_DIR)/ConceptOS.iso"
+	@echo " 内核:         $(OUT_DIR)/vmlinuz"
+	@echo " 模块:         $(OUT_DIR)/modules/"
+	@echo " 模块集:       $(PRODUCT_MODULES)"
+	@echo " 启动验证:     make qemu"
 	@echo "============================================="
 
 # ---- 密钥与签名 ----
@@ -190,7 +196,7 @@ sign: keys
 	@if [ -f "$(OUT_DIR)/vmlinuz" ]; then \
 		openssl dgst -sha256 -sign "$(ROOT_PROJECT)/scripts/keys/maintainer.key" \
 			-out "$(OUT_DIR)/vmlinuz.sig" "$(OUT_DIR)/vmlinuz" && \
-		echo "[OK] 签名完成: $(OUT_DIR)/vmlinuz.sig"; \
+		echo "[OK] 签名输出: $(OUT_DIR)/vmlinuz.sig"; \
 	else \
 		echo "[WARN] 内核镜像不存在，跳过签名"; \
 	fi
@@ -201,8 +207,8 @@ all: kernel modules initramfs
 	@echo ""
 	@echo "============================================="
 	@echo " ServEcosys 构建完成 (产品: $(PRODUCT), 设备: $(DEVICE))"
-	@echo " 产物目录: $(OUT_DIR)/"
-	@echo " 完整可启动镜像: make full"
+	@echo " 输出目录: $(OUT_DIR)/"
+	@echo " 构建完整产品请运行: make full"
 	@echo "============================================="
 
 # ---- 清理 ----
@@ -214,4 +220,4 @@ clean:
 	@for m in guard probe pc mobile; do \
 		$(MAKE) -C "$(KERNEL_MODULES)/$$m" clean 2>/dev/null || true; \
 	done
-	@echo "[OK] 清理完成"
+	@echo "[OK] 清理完毕"

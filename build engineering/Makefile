@@ -1,4 +1,4 @@
-#
+﻿#
 # ServEcosys Root Project - 统一构建系统
 #
 # 用法:
@@ -156,9 +156,10 @@ initramfs:
 
 # ---- 构建 SED 后端 .smle 服务（backend/sub_kernel）----
 # 依赖库 backend/deps 编译到 $(OUT_DIR)/backend-deps，.smle 输出到 $(OUT_DIR)/sed/
+# 用 abspath 展开，避免含空格相对路径（如 '../root project/build/...'）在子 make/gcc 中被拆散
 SED_DIR     := $(ROOT_PROJECT)/backend/sub_kernel
-SED_DEPS_BUILD := $(OUT_DIR)/backend-deps
-SED_OUT     := $(OUT_DIR)/sed
+SED_DEPS_BUILD := $(abspath $(OUT_DIR)/backend-deps)
+SED_OUT     := $(abspath $(OUT_DIR)/sed)
 .PHONY: sed sed-deps
 sed-deps:
 	@echo "[STEP] Build SED dependency libraries (.a)..."
@@ -172,7 +173,7 @@ sed: sed-deps
 
 # ---- 编译 SELinux 策略（backend/security -> servecosys.pp）----
 SELINUX_DIR := $(ROOT_PROJECT)/backend/security
-SELINUX_OUT := $(OUT_DIR)/selinux
+SELINUX_OUT := $(abspath $(OUT_DIR)/selinux)
 .PHONY: selinux-policy
 selinux-policy:
 	@echo "[STEP] Build SELinux policy (servecosys.pp)..."
@@ -185,7 +186,7 @@ selinux-policy:
 
 # ---- 构建 UID 前端 (.ssle) ----
 UI_DIR := $(ROOT_PROJECT)/frontend/ui
-UID_OUT := $(OUT_DIR)/uid
+UID_OUT := $(abspath $(OUT_DIR)/uid)
 .PHONY: uid
 uid:
 	@echo "[STEP] Build UID frontend daemons (.ssle)..."

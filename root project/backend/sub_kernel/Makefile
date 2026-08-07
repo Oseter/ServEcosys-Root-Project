@@ -34,7 +34,7 @@ $(OUTPUT_DIR):
 
 selinux_manager: selinux_manager.c $(selinux_manager_libs)
 	@echo "[SED:smle] Building selinux_manager (deps: log selinux)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(selinux_manager_libs) -lpthread -lselinux
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUT_DIR)/$@.smle $< $(selinux_manager_libs) -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 hal_manager: hal_manager.c $(hal_manager_libs)

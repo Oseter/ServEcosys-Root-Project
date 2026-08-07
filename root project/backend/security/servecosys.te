@@ -56,15 +56,15 @@ files_type(servecosys_btrfs_t)
 
 type servecosys_probe_module_t;
 domain_type(servecosys_probe_module_t)
-module_type(servecosys_probe_module_t)
+#module_type(servecosys_probe_module_t)  // refpolicy devel has no module_type interface
 
 type servecosys_pc_module_t;
 domain_type(servecosys_pc_module_t)
-module_type(servecosys_pc_module_t)
+#module_type(servecosys_pc_module_t)  // refpolicy devel has no module_type interface
 
 type servecosys_mobile_module_t;
 domain_type(servecosys_mobile_module_t)
-module_type(servecosys_mobile_module_t)
+#module_type(servecosys_mobile_module_t)  // refpolicy devel has no module_type interface
 
 ###########################################
 # Backend Domain Rules (sys_dom_t)

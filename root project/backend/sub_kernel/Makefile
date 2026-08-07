@@ -13,23 +13,32 @@ INCLUDES = -I$(DEPS_DIR)/crypto -I$(DEPS_DIR)/log -I$(DEPS_DIR)/ipc \
            -I$(DEPS_DIR)/perm -I$(DEPS_DIR)/selinux -I$(DEPS_DIR)/hal \
            -I$(DEPS_DIR)/btrfs -I$(DEPS_DIR)/oipes-net
 
+# make 在 target/prerequisite 中按空白拆分路径，含空格的 abspath（如
+# ".../root project/build/..."）必须用 rpt space 转义才能作为单 target；
+# recipe 内用引号包住原始值即可。
+empty :=
+space := $(empty) $(empty)
+OUTPUT_DIR_ESC := $(subst $(space),\ ,$(OUTPUT_DIR))
+DEPS_BUILD_ESC := $(subst $(space),\ ,$(DEPS_BUILD))
+
 # .smle 服务依赖声明（主 Makefile 已通过 sed-deps 目标构建依赖库；此处直接引用）
-selinux_manager_libs    = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libselinux.a
-hal_manager_libs        = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libhal.a
-permission_arbiter_libs = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a $(DEPS_BUILD)/libperm.a $(DEPS_BUILD)/libselinux.a
-oipes_client_libs       = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/liboipes-net.a $(DEPS_BUILD)/libcrypto.a
-ipc_bus_libs            = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
-system_manager_libs     = $(DEPS_BUILD)/liblog.a $(DEPS_BUILD)/libipc.a
+# prerequisite 用 DEPS_BUILD_ESC（转义空格），recipe 内用原始 $(DEPS_BUILD)（引号保护）
+selinux_manager_libs    = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/libselinux.a
+hal_manager_libs        = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/libhal.a
+permission_arbiter_libs = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/libipc.a $(DEPS_BUILD_ESC)/libperm.a $(DEPS_BUILD_ESC)/libselinux.a
+oipes_client_libs       = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/liboipes-net.a $(DEPS_BUILD_ESC)/libcrypto.a
+ipc_bus_libs            = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/libipc.a
+system_manager_libs     = $(DEPS_BUILD_ESC)/liblog.a $(DEPS_BUILD_ESC)/libipc.a
 
 SRCS = selinux_manager.c hal_manager.c permission_arbiter.c oipes_client.c ipc_bus.c system_manager.c
 TARGETS = $(SRCS:.c=)
 
-all: deps $(OUTPUT_DIR) $(TARGETS)
+all: deps $(OUTPUT_DIR_ESC) $(TARGETS)
 
 deps:
 	@$(MAKE) -C $(DEPS_DIR) all OUTPUT_DIR="$(DEPS_BUILD)" DEPS_DIR="$(DEPS_DIR)"
 
-$(OUTPUT_DIR):
+$(OUTPUT_DIR_ESC):
 	mkdir -p "$(OUTPUT_DIR)"
 
 selinux_manager: selinux_manager.c $(selinux_manager_libs)

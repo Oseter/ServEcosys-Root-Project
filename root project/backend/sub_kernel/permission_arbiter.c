@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include "selinux_wrap.h"
 

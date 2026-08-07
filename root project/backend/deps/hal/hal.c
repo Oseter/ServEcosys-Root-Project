@@ -3,6 +3,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <errno.h>
+#include <unistd.h>
 
 const char *hal_class_name(hal_dev_class_t cls) {
     switch (cls) {

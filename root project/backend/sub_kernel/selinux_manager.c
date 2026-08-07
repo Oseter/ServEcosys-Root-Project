@@ -1,13 +1,15 @@
 /**
  * ServEcosys SED - SELinux Policy Manager
  *
- * 职责：
- * - 加载和管理 SELinux 策略
- * - 策略热更新接口
- * - 策略编译与验证
- * - 审计日志管理
+ * Responsibilities
+ * - Load and manage the SELinux policy
+ * - Hot-reload interface
+ * - Audit log management
  *
- * 运行在 sys_dom_t 域
+ * Runs in the sys_dom_t domain.
+ *
+ * Uses the self-contained reference monitor (deps/selinux/selinux_wrap)
+ * so no system libselinux dependency is required.
  */
 
 #include <stdio.h>
@@ -19,9 +21,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <selinux/selinux.h>
-#include <selinux/context.h>
 #include <signal.h>
+#include "selinux_wrap.h"
 
 #define SED_VERSION   "0.1.0"
 #define POLICY_DIR    "/system/backend/etc/selinux"
@@ -30,6 +31,7 @@
 #define PID_FILE      "/var/run/selinux_manager.pid"
 
 static volatile sig_atomic_t running = 1;
+static selinux_state_t policy_state;
 
 static void handle_signal(int sig)
 {
@@ -71,7 +73,7 @@ static int load_selinux_policy(void)
     fprintf(stdout, "[SED] Loading SELinux policy: %s (%ld bytes)\n",
             POLICY_BIN, (long)st.st_size);
 
-    if (security_load_policy(POLICY_BIN, st.st_size) < 0) {
+    if (selinux_load_policy(POLICY_BIN) != 0) {
         fprintf(stderr, "[SED] Failed to load policy: %s\n", strerror(errno));
         return -1;
     }
@@ -84,7 +86,7 @@ static int reload_policy(void)
 {
     fprintf(stdout, "[SED] Reloading SELinux policy...\n");
 
-    if (load_selinux_policy() != 0)
+    if (selinux_reload_policy() != 0)
         return -1;
 
     fprintf(stdout, "[SED] Policy reloaded\n");
@@ -94,31 +96,15 @@ static int reload_policy(void)
 static int check_permission(const char *source_context, const char *target_context,
                             const char *tclass, const char *perm)
 {
-    security_class_t class;
-    access_vector_t requested;
-    struct av_decision avd;
-    int ret;
+    int ret = selinux_check(source_context, target_context, tclass, perm);
 
-    class = string_to_security_class(tclass);
-    if (class == 0) {
-        fprintf(stderr, "[SED] Unknown class: %s\n", tclass);
-        return -1;
-    }
-
-    requested = string_to_av_perm(tclass, perm);
-    if (requested == 0) {
-        fprintf(stderr, "[SED] Unknown permission: %s {%s}\n", tclass, perm);
-        return -1;
-    }
-
-    ret = security_compute_av(source_context, target_context,
-                              class, requested, &avd);
     if (ret < 0) {
-        fprintf(stderr, "[SED] security_compute_av failed: %s\n", strerror(errno));
+        fprintf(stderr, "[SED] selinux_check error: %s <-> %s : %s {%s}\n",
+                source_context, target_context, tclass, perm);
         return -1;
     }
 
-    if (avd.allowed & requested) {
+    if (ret == 0) {
         fprintf(stdout, "[SED] ALLOWED: %s -> %s : %s {%s}\n",
                 source_context, target_context, tclass, perm);
         return 0;
@@ -131,16 +117,8 @@ static int check_permission(const char *source_context, const char *target_conte
 
 static void print_policy_info(void)
 {
-    int enforce;
-
-    enforce = security_getenforce();
-    if (enforce < 0) {
-        fprintf(stderr, "[SED] Cannot read enforcement mode: %s\n", strerror(errno));
-        return;
-    }
-
     fprintf(stdout, "[SED] SELinux mode: %s\n",
-            enforce ? "enforcing" : "permissive");
+            policy_state.enforcing ? "enforcing" : "permissive");
 }
 
 int main(int argc, char *argv[])
@@ -153,6 +131,11 @@ int main(int argc, char *argv[])
     sa.sa_handler = handle_signal;
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
+
+    if (selinux_init(&policy_state) != 0) {
+        fprintf(stderr, "[SED] selinux_init failed\n");
+        return 1;
+    }
 
     if (init_audit_log() != 0) {
         fprintf(stderr, "[SED] Audit log initialization failed\n");

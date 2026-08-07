@@ -1,4 +1,4 @@
-#
+﻿#
 # ServEcosys SELinux Policy Makefile
 #
 # Build SELinux policy modules for ServEcosys
@@ -6,9 +6,12 @@
 
 POLICY_NAME = servecosys
 POLICY_DIR = $(shell pwd)
-OUTPUT_DIR = $(POLICY_DIR)/../../build/selinux
+OUTPUT_DIR ?= $(abspath $(POLICY_DIR)/../../build/selinux)
 
 # Toolchain
+# 优先使用 refpolicy 的 devel Makefile（处理 m4 接口宏 + checkmodule + semodule_package）
+# 提供方: apt install selinux-policy-dev (Ubuntu noble/universe)
+REFPOL_MAKEFILE ?= /usr/share/selinux/devel/Makefile
 CHECKPOLICY ?= checkpolicy
 CHECKMODULE ?= checkmodule
 SEMODULE_PKG ?= semodule_package
@@ -28,15 +31,13 @@ PP_BIN = $(POLICY_NAME).pp
 all: $(OUTPUT_DIR)/$(PP_BIN)
 
 $(OUTPUT_DIR):
-	mkdir -p $(OUTPUT_DIR)
+	mkdir -p "$(OUTPUT_DIR)"
 
-$(OUTPUT_DIR)/$(POLICY_NAME).mod: $(TE_SRC) $(IF_SRC) | $(OUTPUT_DIR)
-	@echo "[CHECKMODULE] Building policy module..."
-	$(CHECKMODULE) $(CHECKMODULE_FLAGS) -o $@ $(TE_SRC)
-
-$(OUTPUT_DIR)/$(PP_BIN): $(OUTPUT_DIR)/$(POLICY_NAME).mod $(FC_SRC)
-	@echo "[SEMODULE_PKG] Packaging policy..."
-	$(SEMODULE_PKG) -o $@ -m $(OUTPUT_DIR)/$(POLICY_NAME).mod -f $(FC_SRC)
+# refpolicy 方式：make -f devel/Makefile servecosys.pp（输出到当前目录，再搬走）
+$(OUTPUT_DIR)/$(PP_BIN): $(TE_SRC) $(IF_SRC) $(FC_SRC) | $(OUTPUT_DIR)
+	@echo "[POLICY] Building servecosys policy module (refpolicy makefile)..."
+	$(MAKE) -f "$(REFPOL_MAKEFILE)" $(PP_BIN)
+	cp -f "$(PP_BIN)" "$@"
 	@echo "[OK] SELinux policy module built: $@"
 
 clean:

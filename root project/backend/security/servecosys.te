@@ -83,7 +83,6 @@ allow sys_dom_t sys_data_t:dir { read search add_name write };
 
 # SED SELinux policy management
 allow sys_dom_t self:security { compute_av compute_create compute_member compute_relabel };
-allow sys_dom_t self:system { policy };
 
 # SED hardware access
 dev_read_sysfs(sys_dom_t)

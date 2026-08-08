@@ -238,8 +238,40 @@ EOF
     else
         log_info "repair 后 btrfs check (readonly) OK"
     fi
-    log_info "  post-repair tree-7 (CSUM_TREE) root leaf:"
+
+    log_step "最终 commit 探针：host 挂载最新子卷 -> 写探针 -> filesystem sync -> 干净卸载"
+    PROBE="$WORK/probe"; mkdir -p "$PROBE"
+    if mount -o subvol=@system "${LOOP}p2" "$PROBE" 2>/dev/null; then
+        log_info "  mounted ${LOOP}p2 @system; writing probe + forcing commit"
+        ( umask 077; : > "$PROBE/.servecosys_final_commit" ) 2>/dev/null || true
+        sync
+        btrfs filesystem sync "$PROBE" 2>/dev/null | sed 's/^/    /' || true
+        btrfs property set "$PROBE" ro false 2>/dev/null >/dev/null || true
+        umount "$PROBE" 2>/dev/null || true
+        rmdir "$PROBE" 2>/dev/null || true
+    else
+        log_warn "  probe mount failed; skipping（仅诊断，不影响校验）"
+    fi
+    sync
+
+    log_info "  post-commit superblock copies (0/1, generation/root/bytenr):"
+    for _sb in 0 1; do
+        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p2" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*csum[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
+    done
+    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+        log_error "最终 commit 后 btrfs check(只读) 失败"
+        exit 1
+    else
+        log_info "最终 commit 后 btrfs check (readonly) OK"
+    fi
+    log_info "  final tree-1 (ROOT_TREE) root leaf:"
+    btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
+    log_info "  final tree-7 (CSUM_TREE) root leaf:"
     btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
+    log_info "  post-repair full tree, leaves with generation >= 12 (suspicious newer blocks):"
+    btrfs inspect-internal dump-tree "${LOOP}p2" 2>/dev/null | grep -E '^leaf ' | awk '$5 ~ /^gen/ && $6 ~ /^[0-9]+/ && $6 >= 12 {print}' | sed 's/^/    /' || true
+    log_info "  targeted block dump (also 31326208, guest-failing this round):"
+    btrfs inspect-internal dump-tree -b 31326208 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""

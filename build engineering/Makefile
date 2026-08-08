@@ -1,4 +1,4 @@
-﻿#
+#
 # ServEcosys Root Project - 统一构建系统
 #
 # 用法:
@@ -149,7 +149,7 @@ modules: kernel
 
 # ---- 打包 initramfs ----
 .PHONY: initramfs
-initramfs:
+initramfs: sed selinux-policy
 	@echo "[STEP] 打包 initramfs (product: $(PRODUCT), set: $(PRODUCT_MODULES))..."
 	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)" "$(PRODUCT_MODULES)" "$(PRODUCT)"
 	@echo "[OK] initramfs 输出: $(OUT_DIR)/initramfs.cpio.gz"
@@ -166,10 +166,13 @@ iso: initramfs
 
 # ---- 构建 SED 后端 .smle 服务（backend/sub_kernel）----
 # 依赖库 backend/deps 编译到 $(OUT_DIR)/backend-deps，.smle 输出到 $(OUT_DIR)/sed/
-# 用 abspath 展开，避免含空格相对路径（如 '../root project/build/...'）在子 make/gcc 中被拆散
+# 注意: 不能用 abspath 处理含空格的路径（如 '../root project/build/...'），abspath
+# 会按空白把路径拆成多个词。改为先 mkdir 再用 pwd 求绝对路径（保留空格为单一值），
+# 传给子 make 时引号保护即可（子 make 内部用 _ESC 转义 target/prerequisite 的空格）。
+OUT_DIR_ABS := $(shell mkdir -p "$(OUT_DIR)" && cd "$(OUT_DIR)" && pwd)
 SED_DIR     := $(ROOT_PROJECT)/backend/sub_kernel
-SED_DEPS_BUILD := $(abspath $(OUT_DIR)/backend-deps)
-SED_OUT     := $(abspath $(OUT_DIR)/sed)
+SED_DEPS_BUILD := $(OUT_DIR_ABS)/backend-deps
+SED_OUT     := $(OUT_DIR_ABS)/sed
 .PHONY: sed sed-deps
 sed-deps:
 	@echo "[STEP] Build SED dependency libraries (.a)..."
@@ -183,7 +186,7 @@ sed: sed-deps
 
 # ---- 编译 SELinux 策略（backend/security -> servecosys.pp）----
 SELINUX_DIR := $(ROOT_PROJECT)/backend/security
-SELINUX_OUT := $(abspath $(OUT_DIR)/selinux)
+SELINUX_OUT := $(OUT_DIR_ABS)/selinux
 .PHONY: selinux-policy
 selinux-policy:
 	@echo "[STEP] Build SELinux policy (servecosys.pp)..."
@@ -196,7 +199,7 @@ selinux-policy:
 
 # ---- 构建 UID 前端 (.ssle) ----
 UI_DIR := $(ROOT_PROJECT)/frontend/ui
-UID_OUT := $(abspath $(OUT_DIR)/uid)
+UID_OUT := $(OUT_DIR_ABS)/uid
 .PHONY: uid
 uid:
 	@echo "[STEP] Build UID frontend daemons (.ssle)..."
@@ -264,3 +267,4 @@ clean:
 		$(MAKE) -C "$(KERNEL_MODULES)/$$m" clean 2>/dev/null || true; \
 	done
 	@echo "[OK] 清理完毕"
+

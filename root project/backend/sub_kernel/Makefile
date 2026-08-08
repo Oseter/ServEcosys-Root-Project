@@ -43,32 +43,32 @@ $(OUTPUT_DIR_ESC):
 
 selinux_manager: selinux_manager.c $(selinux_manager_libs)
 	@echo "[SED:smle] Building selinux_manager (deps: log selinux)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(selinux_manager_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(selinux_manager_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 hal_manager: hal_manager.c $(hal_manager_libs)
 	@echo "[SED:smle] Building hal_manager (deps: log hal)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(hal_manager_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(hal_manager_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 permission_arbiter: permission_arbiter.c $(permission_arbiter_libs)
 	@echo "[SED:smle] Building permission_arbiter (deps: log ipc perm selinux)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(permission_arbiter_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(permission_arbiter_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 oipes_client: oipes_client.c $(oipes_client_libs)
 	@echo "[SED:smle] Building oipes_client (deps: log oipes-net crypto)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(oipes_client_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(oipes_client_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 ipc_bus: ipc_bus.c $(ipc_bus_libs)
 	@echo "[SED:smle] Building ipc_bus (deps: log ipc)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(ipc_bus_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(ipc_bus_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 system_manager: system_manager.c $(system_manager_libs)
 	@echo "[SED:smle] Building system_manager (deps: log ipc)..."
-	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(system_manager_libs) -lpthread
+	$(CC) $(CFLAGS) $(INCLUDES) -o "$(OUTPUT_DIR)/$@.smle" $< $(system_manager_libs) -no-pie -static -lpthread
 	@echo "[OK] Built $(OUTPUT_DIR)/$@.smle"
 
 clean:
@@ -91,3 +91,4 @@ info:
 	done < deps.lst
 
 .PHONY: all clean distclean install deps info
+

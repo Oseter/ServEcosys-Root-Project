@@ -66,8 +66,35 @@ if [ -d "$OUT_DIR/modules" ]; then
     cp -a "$OUT_DIR/modules/." "$STAGING/lib/modules/"
 fi
 
+# 3.5 嵌入 SED 后端 .smle 服务 + SELinux 策略（sysinit 在 /system/backend 下启动它们）
+if [ -d "$OUT_DIR/sed" ] && [ -n "$(ls "$OUT_DIR/sed/"*.smle 2>/dev/null)" ]; then
+    echo "[initramfs]   嵌入 SED 后端 .smle"
+    mkdir -p "$STAGING/system/backend/bin"
+    cp "$OUT_DIR/sed/"*.smle "$STAGING/system/backend/bin/"
+    chmod +x "$STAGING/system/backend/bin/"*.smle 2>/dev/null || true
+else
+    echo "[initramfs]   [WARN] 未找到 $OUT_DIR/sed/*.smle，SED 后端将全部 DOWN"
+fi
+
+if [ -f "$OUT_DIR/selinux/servecosys.pp" ]; then
+    echo "[initramfs]   嵌入 SELinux 策略 servecosys.pp"
+    mkdir -p "$STAGING/system/backend/etc/selinux"
+    cp "$OUT_DIR/selinux/servecosys.pp" "$STAGING/system/backend/etc/selinux/"
+else
+    echo "[initramfs]   [WARN] 未找到 $OUT_DIR/selinux/servecosys.pp"
+fi
+
+# 3.6 嵌入 UID 前端 .ssle
+if [ -d "$OUT_DIR/uid" ] && [ -n "$(ls "$OUT_DIR/uid/"*.ssle 2>/dev/null)" ]; then
+    echo "[initramfs]   嵌入 UID 前端 .ssle"
+    mkdir -p "$STAGING/system/frontend/bin"
+    cp "$OUT_DIR/uid/"*.ssle "$STAGING/system/frontend/bin/"
+    chmod +x "$STAGING/system/frontend/bin/"*.ssle 2>/dev/null || true
+fi
+
 # 4. 打包
 ( cd "$STAGING" && find . | cpio -H newc -o 2>/dev/null | gzip > "$OUT_DIR/initramfs.cpio.gz" )
 
 rm -rf "$STAGING"
 echo "[initramfs] 输出: $OUT_DIR/initramfs.cpio.gz"
+

@@ -32,14 +32,17 @@ jobs:
             -no-reboot
           echo "===== BOOT LOG (last 150) ====="
           tail -n 150 boot.log
-          echo "===== RESULT ====="
-          if grep -q "ServEcosys sysinit start" boot.log; then
-            echo "SMOKE PASS: live system booted to sysinit"
+echo "===== RESULT ====="
+          if grep -q "ServEcosys sysinit start" boot.log && \
+             grep -q "started permission_arbiter" boot.log && \
+             grep -q "started system_manager" boot.log && \
+             ! grep -q "SED gate failed" boot.log; then
+            echo "SMOKE PASS: SED gate passed (arbiter+manager up, no degraded console)"
           elif grep -qE 'Kernel panic|Oops|BUG:|unable to handle kernel|No working init|Requested init' boot.log; then
             echo "SMOKE FAIL: kernel panic / init failure"
             exit 1
           else
-            echo "SMOKE WARN: no sysinit marker seen"
+            echo "SMOKE FAIL: SED did not come up or fell back to degraded console"
             exit 1
           fi
       - name: Upload artifacts

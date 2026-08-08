@@ -1,8 +1,0 @@
-# SED Backend Services - Dependency List
-# Format: service_name: dep1 dep2 dep3
-selinux_manager: log selinux
-hal_manager: log hal
-permission_arbiter: log ipc perm selinux
-oipes_client: log oipes-net crypto
-ipc_bus: log ipc
-system_manager: log ipc

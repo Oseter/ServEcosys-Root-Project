@@ -10,6 +10,12 @@ CFLAGS = -Wall -Wextra -O2 -std=c11 -D_GNU_SOURCE -fPIC
 # 可由主 Makefile 以 OUTPUT_DIR=... 覆盖（命令行优先级高于 ?=）
 OUTPUT_DIR ?= ../../build/backend-deps
 
+# make 的 target/prerequisite 会按空白拆分路径，含空格的绝对路径
+# （如 ".../root project/build/..."）需转义为 _ESC 作单个 target；recipe 用引号包原始值。
+empty :=
+space := $(empty) $(empty)
+OUTPUT_DIR_ESC := $(subst $(space),\ ,$(OUTPUT_DIR))
+
 DEPS = \
 	crypto \
 	log \
@@ -27,13 +33,13 @@ oipes-net_SRC = oipes-net/oipes.c
 
 .PHONY: all clean $(DEPS)
 
-all: $(OUTPUT_DIR) $(DEPS)
+all: $(OUTPUT_DIR_ESC) $(DEPS)
 
-$(OUTPUT_DIR):
+$(OUTPUT_DIR_ESC):
 	mkdir -p "$(OUTPUT_DIR)"
 
 define BUILD_DEP
-$(1): $(OUTPUT_DIR)
+$(1): $(OUTPUT_DIR_ESC)
 	@echo "[DEPS:smle] Building $(1)..."
 	$(CC) $(CFLAGS) -c "$(or $($(1)_SRC),$(1)/$(1).c)" -o "$(OUTPUT_DIR)/$(1).o"
 	$(AR) rcs "$(OUTPUT_DIR)/lib$(1).a" "$(OUTPUT_DIR)/$(1).o"

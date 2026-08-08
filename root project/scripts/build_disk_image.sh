@@ -199,14 +199,11 @@ EOF
     umount "$EFI"  2>/dev/null || true
 
     log_step "自检 btrfs（host 侧, detach 前）"
-    log_info "  superblock generations (all copies):"
-    btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE 'generation|bytenr' | head -n 12 | sed 's/^/    /' || true
-    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
-        log_error "btrfs check 失败: 镜像内 btrfs 无效（host 侧已损坏）"
-        exit 1
-    else
-        log_info "btrfs check OK"
-    fi
+    log_info "  superblock copies (0/1/2/3, generation each):"
+    for _sb in 0 1 2 3; do
+        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p2" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*chunk_root[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
+        log_info ""
+    done
     log_info "  SUPPORTED features (host btrfs-progs): $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -i 'incompat_flags' | head -1)"
     log_info "  FS layout: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE 'sectorsize|nodesize|checksum' | sed 's/^ *//' | tr '\n' ';')"
     log_info "  csum type: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE '^checksum|^csum_type|csum_type' | head -1)"
@@ -214,13 +211,35 @@ EOF
     btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 8 | sed 's/^/    /' || true
     log_info "  leaf header flags (tree id 3 = CHUNK_TREE):"
     btrfs inspect-internal dump-tree -t 3 "${LOOP}p2" 2>/dev/null | head -n 10 | sed 's/^/    /' || true
-    log_info "  leaf header flags (tree id 7 = CSUM_TREE):"
-    btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | head -n 10 | sed 's/^/    /' || true
-    log_info "  full tree flags summary (leaf lines):"
-    btrfs inspect-internal dump-tree "${LOOP}p2" 2>/dev/null | grep -E '^leaf|^node' | sed 's/^/    /' | head -n 40 || true
+    log_info "  leaf header flags (tree id 7 = CSUM_TREE, all leaves):"
+    btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | sed 's/^/    /' || true
     log_info "  targeted block dump (guest-failing leaves 31309824, 31457280):"
     btrfs inspect-internal dump-tree -b 31309824 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
     btrfs inspect-internal dump-tree -b 31457280 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
+
+    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+        log_error "btrfs check(只读) 失败: 镜像内 btrfs 无效（host 侧已损坏）"
+        exit 1
+    else
+        log_info "btrfs check (readonly) OK"
+    fi
+
+    log_step "btrfs check --repair（统一 super 副本 + 置 WRITTEN，防 guest 内核 6.6 WRITTEN 检查失败）"
+    btrfs check --repair "${LOOP}p2" >"$WORK/repair.log" 2>&1
+    _rc=$?
+    tail -n 15 "$WORK/repair.log" | sed 's/^/    /' || true
+    if [ "$_rc" -ne 0 ]; then
+        log_error "btrfs check --repair 失败 (rc=$_rc)"
+        exit 1
+    fi
+    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+        log_error "repair 后 btrfs check(只读) 失败"
+        exit 1
+    else
+        log_info "repair 后 btrfs check (readonly) OK"
+    fi
+    log_info "  post-repair tree-7 (CSUM_TREE) root leaf:"
+    btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""

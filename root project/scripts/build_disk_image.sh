@@ -209,6 +209,9 @@ EOF
     log_info ""
     log_info "  # 烧录到真实磁盘（Windows: Rufus / BalenaEtcher; Linux: dd）"
     log_info "  sudo dd if=$IMG_OUT of=/dev/sdX bs=4M status=progress && sync"
+
+    # 由 sudo 构建时产物归 root; 放宽权限便于非特权 CI 步骤(QEMU) 读取
+    chmod 644 "$IMG_OUT" 2>/dev/null || true
 }
 
 main "$@"

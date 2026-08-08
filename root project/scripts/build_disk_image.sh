@@ -117,7 +117,7 @@ main() {
     [ -e "${LOOP}p2" ] || { log_error "partition nodes not ready (${LOOP}p2)"; exit 1; }
 
     log_step "格式化为文件系统: EFI=fat32, Root=btrfs"
-    mkfs.fat -F 32 -n "CONCEPTOS_EFI" "${LOOP}p1" >/dev/null
+    mkfs.fat -F 32 -n "CEFI" "${LOOP}p1" >/dev/null
     mkfs.btrfs -f -L "ConceptOS" "${LOOP}p2" >/dev/null
 
     mount "${LOOP}p2" "$TOP"

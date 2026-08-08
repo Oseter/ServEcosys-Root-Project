@@ -154,7 +154,16 @@ initramfs: sed selinux-policy
 	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)" "$(PRODUCT_MODULES)" "$(PRODUCT)"
 	@echo "[OK] initramfs 输出: $(OUT_DIR)/initramfs.cpio.gz"
 
-# ---- 生成可启动 ISO（bootloader/kernel/initramfs/.smle/.ssle/SELinux 策略 一并打入）----
+ # ---- 生成可安装磁盘镜像（GPT + EFI + Btrfs @system/@data/@snapshots，Ubuntu/Android 风格）----
+.PHONY: img
+img: initramfs kernel
+	@echo "[STEP] 生成可安装磁盘镜像 ConceptOS.img ($(PRODUCT))..."
+	@PRODUCT="$(PRODUCT)" OUT_DIR="$(OUT_DIR)" \
+		"$(ROOT_PROJECT)/scripts/build_disk_image.sh" "$(OUT_DIR)/ConceptOS.img" || { \
+		echo "[ERROR] 磁盘镜像构建失败"; exit 1; \
+	}
+	@echo "[OK] 磁盘镜像: $(OUT_DIR)/ConceptOS.img"
+# ---- 生成可启动 ISO（bootloader/kernel/initramfs/.smle/.ssle/SELinux 策略，一并集成）----
 .PHONY: iso
 iso: initramfs
 	@echo "[STEP] 生成可启动 ISO ($(PRODUCT))..."
@@ -217,7 +226,7 @@ qemu: iso
 
 # ---- 一键构建（含密钥 + 内核 + 模块 + SED + 策略 + initramfs + ISO）----
 .PHONY: full
-full: keys kernel modules sed selinux-policy initramfs iso
+full: keys kernel modules sed selinux-policy initramfs iso img
 	@echo ""
 	@echo "============================================="
 	@echo " ServEcosys 构建完成"

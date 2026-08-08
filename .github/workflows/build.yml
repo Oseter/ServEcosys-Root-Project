@@ -17,7 +17,7 @@ jobs:
         with:
           product: servecosys_qemu
           device: qemu-x86_64
-      - name: QEMU boot smoke test
+      - name: QEMU boot smoke test (ISO kernel+initrd)
         shell: bash
         timeout-minutes: 5
         run: |
@@ -45,12 +45,44 @@ jobs:
             echo "SMOKE FAIL: SED did not come up or fell back to degraded console"
             exit 1
           fi
+      - name: QEMU boot smoke test (installable ConceptOS.img real root)
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          cd "build engineering"
+          IMG="../root project/build/servecosys_qemu/ConceptOS.img"
+          test -f "$IMG" || { echo "ConceptOS.img not built"; exit 1; }
+          ls -la "$IMG"
+          set +e
+          timeout --signal=KILL 200 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -drive "file=$IMG,format=raw,if=none,id=hd" \
+            -device virtio-blk-pci,drive=hd \
+            -bios /usr/share/ovmf/OVMF.fd \
+            -display none -monitor none -serial file:disk.log \
+            -no-reboot
+          echo "===== DISK BOOT LOG (last 150) ====="
+          tail -n 150 disk.log
+          echo "===== RESULT ====="
+          if grep -q "Found Btrfs root" disk.log && \
+             grep -q "sysinit start" disk.log && \
+             grep -q "started permission_arbiter" disk.log && \
+             ! grep -q "SED gate failed" disk.log; then
+            echo "DISK SMOKE PASS: real-root boot from ConceptOS.img via GRUB/Btrfs"
+          elif grep -qE 'Kernel panic|Oops|BUG:|No such device|error: no such' disk.log; then
+            echo "DISK SMOKE FAIL: kernel panic or GRUB failed"
+            exit 1
+          else
+            echo "DISK SMOKE FAIL: did not reach real-root SED boot"
+            exit 1
+          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: conceptos
           path: |
             root project/build/servecosys_qemu/ConceptOS.iso
+            root project/build/servecosys_qemu/ConceptOS.img
             root project/build/servecosys_qemu/vmlinuz
             root project/build/servecosys_qemu/initramfs.cpio.gz
           compression-level: 0

@@ -192,6 +192,13 @@ CONFIG_IWLMVM=m
 CONFIG_SATA_AHCI=m
 CONFIG_NVME_CORE=m
 CONFIG_BLK_DEV_NVME=m
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_BLK_SCSI=y
+CONFIG_VIRTIO_PCI_LEGACY=y
+CONFIG_VIRTIO_BALLOON=y
+
 
 # ============================================================================
 # 内核模块支持

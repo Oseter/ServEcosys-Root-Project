@@ -27,6 +27,7 @@ runs:
           git wget curl \
           busybox-static \
           xorriso mtools dosfstools \
+          gdisk btrfs-progs \
           grub-pc-bin grub-efi-amd64-bin grub-common \
           qemu-system-x86 ovmf \
           openssl sbsigntool efitools \
@@ -47,3 +48,4 @@ runs:
         echo "--- selinux/ ---"
         ls -la "root project/build/${{ inputs.product }}/selinux/" 2>/dev/null || echo "(no selinux dir)"
         test -f "root project/build/${{ inputs.product }}/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }
+        test -f "root project/build/${{ inputs.product }}/ConceptOS.img" || { echo "ConceptOS.img missing"; exit 1; }

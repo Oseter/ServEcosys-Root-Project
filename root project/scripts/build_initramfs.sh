@@ -39,7 +39,7 @@ if [ -f "$BUSYBOX_BIN" ]; then
     echo "[initramfs]   嵌入 busybox: $BUSYBOX_BIN"
     cp -L "$BUSYBOX_BIN" "$STAGING/bin/busybox"
     chmod +x "$STAGING/bin/busybox"
-    ( cd "$STAGING/bin" && for a in sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead; do ln -sf busybox "$a"; done )
+    ( cd "$STAGING/bin" && for a in sh mount mountpoint cp mv ln mkdir mknod cat grep cut sed ls rm echo test sleep setsid cttyhack switch_root chroot modprobe insmod rmmod poweroff reboot dmesg find hexdump readlink readahead blkid lsblk; do ln -sf busybox "$a"; done )
     # /sbin/init 指向骨架 init（busybox init 所需的 applets 也放 /sbin）
     ( cd "$STAGING/sbin" && for a in init switch_root modprobe; do ln -sf ../bin/busybox "$a" 2>/dev/null || true; done )
 else

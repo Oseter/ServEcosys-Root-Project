@@ -97,40 +97,58 @@ else
 fi
 
 # ============================================
-# [4/7] Root device discovery
+# [4/7] Root device discovery (Btrfs)
 # ============================================
 echo "[4/7] Searching for root device..."
 ROOT_DEV=""
 
+# Enumerate candidate partition devices from /sys/block (independent of blkid)
+candidate_devs() {
+    local dev sys
+    for sys in /sys/block/*; do
+        [ -d "$sys" ] || continue
+        dev="$(basename "$sys")"
+        case "$dev" in
+            loop*|ram*|fd*) continue ;;
+        esac
+        if [ -d "$sys" ]; then
+            echo "/dev/$dev"
+            for p in "$sys"/*; do
+                case "$(basename "$p")" in
+                    sd*|vd*|nvme*|mmcblk*|xvd*|hd*|sr*) echo "/dev/$(basename "$p")" ;;
+                esac
+            done
+        fi
+    done
+}
+
 scan_block_device() {
     local dev="$1"
-    if [ -b "$dev" ] && blkid -t TYPE=btrfs "$dev" >/dev/null 2>&1; then
+    [ -b "$dev" ] || return 1
+    # probe: a plain btrfs ro mount succeeds iff the device is Btrfs
+    mkdir -p /tmp/btrfs-probe 2>/dev/null || true
+    if mount -t btrfs -o ro "$dev" /tmp/btrfs-probe 2>/dev/null; then
+        umount /tmp/btrfs-probe 2>/dev/null || true
         ROOT_DEV="$dev"
         return 0
     fi
     return 1
 }
 
-# Try common device paths
-for dev in \
-    /dev/sda2 /dev/sda1 /dev/sdb2 /dev/sdb1 \
-    /dev/nvme0n1p2 /dev/nvme0n1p1 /dev/nvme1n1p2 /dev/nvme1n1p1 \
-    /dev/mmcblk0p2 /dev/mmcblk0p1 /dev/mmcblk1p2 /dev/mmcblk1p1 \
-    /dev/vda2 /dev/vda1 /dev/xvda2 /dev/xvda1
-do
-    if scan_block_device "$dev"; then
-        echo "  Found Btrfs root: $ROOT_DEV"
+# Prefer common partition names first (fast path), then full scan
+for dev in /dev/vda2 /dev/sda2 /dev/sdb2 /dev/nvme0n1p2 /dev/mmcblk0p2 /dev/xvda2; do
+    if [ -b "$dev" ] && scan_block_device "$dev"; then
+        echo "  Found Btrfs root: $ROOT_DEV (subvolume @system mounted)"
         break
     fi
 done
 
-# Try scanning all block devices if not found
 if [ -z "$ROOT_DEV" ]; then
     echo "  Scanning all block devices for Btrfs..."
-    for dev in /dev/sd* /dev/nvme* /dev/mmcblk* /dev/vd* /dev/xvd*; do
+    for dev in $(candidate_devs); do
         [ -b "$dev" ] || continue
         if scan_block_device "$dev"; then
-            echo "  Found Btrfs root: $ROOT_DEV"
+            echo "  Found Btrfs root: $ROOT_DEV (subvolume @system mounted)"
             break
         fi
     done
@@ -182,7 +200,7 @@ mount -t btrfs -o ro "$ROOT_DEV" /tmp 2>/dev/null || mkdir -p /tmp
 
 # Check if @system subvolume exists
 if btrfs subvolume list /tmp 2>/dev/null | grep -q "@system"; then
-    mount -o subvol=@system,ro "$ROOT_DEV" "$ROOT_MOUNT"
+    mount -t btrfs -o subvol=@system,ro "$ROOT_DEV" "$ROOT_MOUNT"
     echo "  Mounted @system subvolume"
 else
     # Fallback: mount the default subvolume

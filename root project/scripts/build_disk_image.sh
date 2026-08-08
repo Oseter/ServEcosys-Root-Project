@@ -210,6 +210,12 @@ EOF
     log_info "  csum type: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE '^checksum|^csum_type|csum_type' | head -1)"
     log_info "  leaf header flags (tree 1, first block):"
     btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 8 | sed 's/^/    /' || true
+    log_info "  leaf header flags (tree 3 = CSUM_TREE):"
+    btrfs inspect-internal dump-tree -t 3 "${LOOP}p2" 2>/dev/null | head -n 10 | sed 's/^/    /' || true
+    log_info "  full tree flags summary (leaf lines):"
+    btrfs inspect-internal dump-tree "${LOOP}p2" 2>/dev/null | grep -E '^leaf|^node' | sed 's/^/    /' | head -n 40 || true
+    log_info "  targeted block dump (0x1DEC000 = 31309824, guest-failing leaf):"
+    btrfs inspect-internal dump-tree -b 31309824 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""

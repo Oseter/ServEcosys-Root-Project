@@ -61,6 +61,8 @@ jobs:
             -bios /usr/share/ovmf/OVMF.fd \
             -display none -monitor none -serial file:disk.log \
             -no-reboot
+          echo "===== DISK BOOT LOG (head 50) ====="
+          head -n 50 disk.log
           echo "===== DISK BOOT LOG (last 150) ====="
           tail -n 150 disk.log
           echo "===== RESULT ====="

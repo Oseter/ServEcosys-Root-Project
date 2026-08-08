@@ -154,6 +154,16 @@ initramfs:
 	@"$(ROOT_PROJECT)/scripts/build_initramfs.sh" "$(OUT_DIR)" "$(INITRAMFS_DIR)" "$(PRODUCT_MODULES)" "$(PRODUCT)"
 	@echo "[OK] initramfs 输出: $(OUT_DIR)/initramfs.cpio.gz"
 
+# ---- 生成可启动 ISO（bootloader/kernel/initramfs/.smle/.ssle/SELinux 策略 一并打入）----
+.PHONY: iso
+iso: initramfs
+	@echo "[STEP] 生成可启动 ISO ($(PRODUCT))..."
+	@PRODUCT="$(PRODUCT)" BUILD_DIR="$(OUT_DIR)" OUTPUT_ISO="$(OUT_DIR)/ConceptOS.iso" \
+		"$(ROOT_PROJECT)/scripts/build_image.sh" || { \
+		echo "[ERROR] ISO 生成失败"; exit 1; \
+	}
+	@echo "[OK] ISO 输出: $(OUT_DIR)/ConceptOS.iso"
+
 # ---- 构建 SED 后端 .smle 服务（backend/sub_kernel）----
 # 依赖库 backend/deps 编译到 $(OUT_DIR)/backend-deps，.smle 输出到 $(OUT_DIR)/sed/
 # 用 abspath 展开，避免含空格相对路径（如 '../root project/build/...'）在子 make/gcc 中被拆散

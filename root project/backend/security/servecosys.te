@@ -83,7 +83,7 @@ allow sys_dom_t sys_data_t:dir { read search add_name write };
 
 # SED SELinux policy management
 allow sys_dom_t self:security { compute_av compute_create compute_member compute_relabel };
-allow sys_dom_t self:system { module_load policy };
+allow sys_dom_t self:system { policy };
 
 # SED hardware access
 dev_read_sysfs(sys_dom_t)
@@ -99,8 +99,8 @@ allow sys_dom_t uid_dom_t:unix_stream_socket { connectto };
 allow sys_dom_t servecosys_sysfs_t:file read;
 
 # SED OIPES network access
-allow sys_dom_t self:tcp_socket { create bind connect send_msg recv_msg };
-allow sys_dom_t self:udp_socket { create bind send_msg recv_msg };
+allow sys_dom_t self:tcp_socket { create bind connect sendto recvfrom };
+allow sys_dom_t self:udp_socket { create bind sendto recvfrom };
 corenet_tcp_connect_all_ports(sys_dom_t)
 corenet_udp_bind_all_ports(sys_dom_t)
 
@@ -150,7 +150,7 @@ allow app_sandbox_t uid_dom_t:unix_dgram_socket { sendto };
 # OIPES Client Rules
 ###########################################
 
-allow oipes_client_t self:tcp_socket { create bind connect send_msg recv_msg };
+allow oipes_client_t self:tcp_socket { create bind connect sendto recvfrom };
 corenet_tcp_connect_all_ports(oipes_client_t)
 allow oipes_client_t sys_data_t:file { read write };
 

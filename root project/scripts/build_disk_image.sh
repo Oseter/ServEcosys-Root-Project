@@ -207,6 +207,9 @@ EOF
     fi
     log_info "  SUPPORTED features (host btrfs-progs): $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -i 'incompat_flags' | head -1)"
     log_info "  FS layout: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE 'sectorsize|nodesize|checksum' | sed 's/^ *//' | tr '\n' ';')"
+    log_info "  csum type: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE '^checksum|^csum_type|csum_type' | head -1)"
+    log_info "  leaf header flags (tree 1, first block):"
+    btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 8 | sed 's/^/    /' || true
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""

@@ -30,9 +30,9 @@ jobs:
             -append "console=ttyS0 loglevel=6 rdinit=/init panic=-1 earlyprintk=serial" \
             -display none -monitor none -serial file:boot.log \
             -no-reboot
-          echo "===== BOOT LOG (last 150) ====="
+echo "===== BOOT LOG (last 150) ====="
           tail -n 150 boot.log
-echo "===== RESULT ====="
+          echo "===== RESULT ====="
           if grep -q "ServEcosys sysinit start" boot.log && \
              grep -q "started permission_arbiter" boot.log && \
              grep -q "started system_manager" boot.log && \

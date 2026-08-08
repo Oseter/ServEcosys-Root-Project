@@ -8,6 +8,13 @@ POLICY_NAME = servecosys
 POLICY_DIR = $(shell pwd)
 OUTPUT_DIR ?= $(abspath $(POLICY_DIR)/../../build/selinux)
 
+# make 的 target/prerequisite 会按空白拆分路径，含空格的 abspath
+# （如 ".../root project/build/..."）需用 \ 转义空格作为单目标；
+# recipe 内用引号包住原始 $(OUTPUT_DIR) 即可。
+empty :=
+space := $(empty) $(empty)
+OUTPUT_DIR_ESC := $(subst $(space),\ ,$(OUTPUT_DIR))
+
 # Toolchain
 # 优先使用 refpolicy 的 devel Makefile（处理 m4 接口宏 + checkmodule + semodule_package）
 # 提供方: apt install selinux-policy-dev (Ubuntu noble/universe)
@@ -28,17 +35,17 @@ FC_SRC = $(POLICY_NAME).fc
 IF_SRC = $(POLICY_NAME).if
 PP_BIN = $(POLICY_NAME).pp
 
-all: $(OUTPUT_DIR)/$(PP_BIN)
+all: $(OUTPUT_DIR_ESC)/$(PP_BIN)
 
-$(OUTPUT_DIR):
+$(OUTPUT_DIR_ESC):
 	mkdir -p "$(OUTPUT_DIR)"
 
 # refpolicy 方式：make -f devel/Makefile servecosys.pp（输出到当前目录，再搬走）
-$(OUTPUT_DIR)/$(PP_BIN): $(TE_SRC) $(IF_SRC) $(FC_SRC) | $(OUTPUT_DIR)
+$(OUTPUT_DIR_ESC)/$(PP_BIN): $(TE_SRC) $(IF_SRC) $(FC_SRC) | $(OUTPUT_DIR_ESC)
 	@echo "[POLICY] Building servecosys policy module (refpolicy makefile)..."
 	$(MAKE) -f "$(REFPOL_MAKEFILE)" $(PP_BIN)
-	cp -f "$(PP_BIN)" "$@"
-	@echo "[OK] SELinux policy module built: $@"
+	cp -f "$(PP_BIN)" "$(OUTPUT_DIR)/$(PP_BIN)"
+	@echo "[OK] SELinux policy module built: $(OUTPUT_DIR)/$(PP_BIN)"
 
 clean:
 	@echo "[CLEAN] Removing SELinux policy artifacts..."

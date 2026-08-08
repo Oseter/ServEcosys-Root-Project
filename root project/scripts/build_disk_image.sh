@@ -205,6 +205,8 @@ EOF
     else
         log_info "btrfs check OK"
     fi
+    log_info "  SUPPORTED features (host btrfs-progs): $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -i 'incompat_flags' | head -1)"
+    log_info "  FS layout: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE 'sectorsize|nodesize|checksum' | sed 's/^ *//' | tr '\n' ';')"
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""

@@ -197,6 +197,15 @@ EOF
     log_step "卸载 + 释放 loop"
     umount "$ROOT" 2>/dev/null || true
     umount "$EFI"  2>/dev/null || true
+
+    log_step "自检 btrfs（host 侧, detach 前）"
+    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+        log_error "btrfs check 失败: 镜像内 btrfs 无效（host 侧已损坏）"
+        exit 1
+    else
+        log_info "btrfs check OK"
+    fi
+
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""
 

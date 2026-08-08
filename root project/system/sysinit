@@ -1,0 +1,73 @@
+#!/bin/sh
+#
+# ServEcosys system init - the real /sbin/init (switch_root target)
+#
+# Boot mainline:
+#   1. ensure pseudo filesystems + writable root
+#   2. Backend Security Domain (SED)  -> permission_arbiter / system_manager
+#   3. Frontend Interaction Domain    -> only after the SED security gate
+#
+# Deployed as /sbin/init inside the @system subvolume; the initramfs
+# switch_roots here (see scripts/initramfs/init).
+#
+
+. /system/lib.sh
+
+log "ServEcosys sysinit start"
+
+# Build the system layout (README structure)
+mkdir -p /system/backend/bin /system/backend/etc/selinux /system/frontend/bin \
+         /system/app-data /var/log/sed /var/run 2>/dev/null
+
+# Root was mounted read-only by initramfs; make it writable
+mount -o remount,rw / 2>/dev/null || log "[WARN] cannot remount / rw"
+
+# Pseudo filesystems (moved over by initramfs; recreate if missing)
+mountpoint -q /proc 2>/dev/null || mount -t proc proc /proc 2>/dev/null
+mountpoint -q /sys  2>/dev/null || mount -t sysfs sysfs /sys 2>/dev/null
+mountpoint -q /dev  2>/dev/null || mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mountpoint -q /run  2>/dev/null || mount -t tmpfs tmpfs /run 2>/dev/null
+
+# 1. Backend Security Domain
+if [ -f /system/sed-bootstrap.sh ]; then
+    /system/sed-bootstrap.sh
+else
+    log "[ERROR] /system/sed-bootstrap.sh missing"
+fi
+
+# 2. Frontend Interaction Domain - gated on SED authority
+if [ -e "$RUN_DIR/permission_arbiter.pid" ] && [ -e "$RUN_DIR/system_manager.pid" ]; then
+    if [ -f /system/uid-bootstrap.sh ]; then
+        /system/uid-bootstrap.sh
+    else
+        log "[ERROR] /system/uid-bootstrap.sh missing"
+    fi
+else
+    log "[ERROR] SED gate failed - booting into degraded maintenance console"
+fi
+
+log "=== 概念OS (ConceptOS) - ServEcosys 系操作系统标准与概念呈现 ==="
+sed_status() {
+    for d in permission_arbiter system_manager ipc_bus hal_manager oipes_client; do
+        p="$RUN_DIR/$d.pid"
+        if [ -f "$p" ]; then log "    $d: pid $(cat "$p")"; else log "    $d: DOWN"; fi
+    done
+}
+log "  SED:"; sed_status
+log "  UID:   display_server input_manager compositor system_ui"
+log "  Console: system_manager -> /var/run/servecosys_mgr.sock"
+
+# 启动守护进程监督器（后台，崩溃自动拉起）
+if [ -x /system/supervise.sh ]; then
+    mkdir -p "$LOG_DIR" 2>/dev/null
+    /system/supervise.sh >> "$LOG_DIR/supervise.log" 2>&1 &
+    log "supervisor started (pid $!)"
+else
+    log "[WARN] /system/supervise.sh missing; no daemon supervision"
+fi
+
+# Keep PID 1 alive; give the user a maintenance console on /dev/console
+if [ -c /dev/console ]; then
+    exec setsid /bin/sh < /dev/console > /dev/console 2>&1
+fi
+exec /bin/sh

@@ -1,0 +1,45 @@
+# Build artifacts
+build/
+*.o
+*.ko
+*.mod
+*.mod.c
+*.symvers
+*.order
+*.efi
+*.so
+*.a
+*.img
+*.iso
+
+# Kernel
+vmlinuz*
+bzImage
+Image.gz
+initramfs*.cpio.gz
+
+# Linux kernel source tree (space-free location at repo root)
+/kernel-src/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Signing keys (never commit private keys)
+*.key
+*.pem
+!servecosys/scripts/*.sample.key

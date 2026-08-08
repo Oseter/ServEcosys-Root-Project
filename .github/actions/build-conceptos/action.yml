@@ -1,0 +1,49 @@
+name: Build ConceptOS
+description: Install dependencies and build the ConceptOS (概念OS) bootable ISO via the real build chain
+inputs:
+  token:
+    description: GitHub token (defaults to github.token)
+    required: false
+    default: ${{ github.token }}
+  product:
+    description: Product to build (servecsys_pc | servecsys_mobile | servecsys_qemu)
+    required: false
+    default: servecosys_qemu
+  device:
+    description: Device to build for (qemu-x86_64 | reference-x86_64)
+    required: false
+    default: qemu-x86_64
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y -f
+        sudo apt-get install -y \
+          build-essential gcc make binutils bc bison flex gawk kmod cpio file \
+          libelf-dev libssl-dev libncurses-dev libfdt-dev device-tree-compiler rsync \
+          git wget curl \
+          busybox-static \
+          xorriso mtools dosfstools \
+          grub-pc-bin grub-efi-amd64-bin grub-common \
+          qemu-system-x86 ovmf \
+          openssl sbsigntool efitools \
+          selinux-policy-dev checkpolicy semodule-utils
+
+    - name: Build full (内核 + 模块 + SED .smle + SELinux 策略 + initramfs + ISO)
+      shell: bash
+      run: |
+        cd "build engineering"
+        make full PRODUCT=${{ inputs.product }} DEVICE=${{ inputs.device }}
+
+    - name: Show artifacts
+      shell: bash
+      run: |
+        ls -la "root project/build/${{ inputs.product }}/"
+        echo "--- sed/ ---"
+        ls -la "root project/build/${{ inputs.product }}/sed/" 2>/dev/null || echo "(no sed dir)"
+        echo "--- selinux/ ---"
+        ls -la "root project/build/${{ inputs.product }}/selinux/" 2>/dev/null || echo "(no selinux dir)"
+        test -f "root project/build/${{ inputs.product }}/ConceptOS.iso" || { echo "ConceptOS.iso missing"; exit 1; }

@@ -1,0 +1,161 @@
+policy_module(servecosys, 1.0.0)
+
+###########################################
+# ServEcosys Security Domains
+###########################################
+
+# Backend Security Domain (SED)
+type sys_dom_t;
+domain_type(sys_dom_t)
+unconfined_domain_noaudit(sys_dom_t)
+
+# Frontend Interaction Domain (UID)  
+type uid_dom_t;
+domain_type(uid_dom_t)
+
+# Application Sandbox
+type app_sandbox_t;
+domain_type(app_sandbox_t)
+
+# OIPES Client
+type oipes_client_t;
+domain_type(oipes_client_t)
+
+# System Services
+type system_service_t;
+domain_type(system_service_t)
+
+###########################################
+# Types for Files and Resources
+###########################################
+
+type sys_dom_exec_t;
+files_type(sys_dom_exec_t)
+
+type uid_dom_exec_t;
+files_type(uid_dom_exec_t)
+
+type app_data_t;
+files_type(app_data_t)
+
+type sys_data_t;
+files_type(sys_data_t)
+
+type servecosys_proc_t;
+files_type(servecosys_proc_t)
+
+type servecosys_sysfs_t;
+fs_type(servecosys_sysfs_t)
+
+type servecosys_btrfs_t;
+files_type(servecosys_btrfs_t)
+
+###########################################
+# Kernel Module Types
+###########################################
+
+type servecosys_probe_module_t;
+domain_type(servecosys_probe_module_t)
+#module_type(servecosys_probe_module_t)  // refpolicy devel has no module_type interface
+
+type servecosys_pc_module_t;
+domain_type(servecosys_pc_module_t)
+#module_type(servecosys_pc_module_t)  // refpolicy devel has no module_type interface
+
+type servecosys_mobile_module_t;
+domain_type(servecosys_mobile_module_t)
+#module_type(servecosys_mobile_module_t)  // refpolicy devel has no module_type interface
+
+###########################################
+# Backend Domain Rules (sys_dom_t)
+###########################################
+
+# SED can transition to/from init
+init_daemon_domain(sys_dom_t, sys_dom_exec_t)
+
+# SED domain privileges
+allow sys_dom_t self:process { signal fork getattr };
+allow sys_dom_t self:capability { sys_admin sys_rawio sys_module sys_boot };
+
+# SED access to system resources
+allow sys_dom_t sys_data_t:file { read write open getattr };
+allow sys_dom_t sys_data_t:dir { read search add_name write };
+
+# SED SELinux policy management
+allow sys_dom_t self:security { compute_av compute_create compute_member compute_relabel };
+
+# SED hardware access
+dev_read_sysfs(sys_dom_t)
+dev_read_urand(sys_dom_t)
+
+# SED can manage modules
+
+# SED IPC with UID
+allow sys_dom_t uid_dom_t:unix_dgram_socket { sendto recvfrom };
+allow sys_dom_t uid_dom_t:unix_stream_socket { connectto };
+
+# SED access to sysfs entries
+allow sys_dom_t servecosys_sysfs_t:file read;
+
+# SED OIPES network access
+allow sys_dom_t self:tcp_socket { create bind connect sendto recvfrom };
+allow sys_dom_t self:udp_socket { create bind sendto recvfrom };
+corenet_tcp_connect_all_ports(sys_dom_t)
+corenet_udp_bind_all_ports(sys_dom_t)
+
+###########################################
+# Frontend Domain Rules (uid_dom_t)
+###########################################
+
+init_daemon_domain(uid_dom_t, uid_dom_exec_t)
+
+# UID basic operations
+allow uid_dom_t self:process { signal fork getattr };
+allow uid_dom_t self:capability { sys_tty_config };
+
+# UID display and input
+allow uid_dom_t self:unix_dgram_socket { sendto recvfrom };
+allow uid_dom_t self:unix_stream_socket { connectto listen accept };
+
+# UID access to app data
+allow uid_dom_t app_data_t:dir { read search add_name write };
+allow uid_dom_t app_data_t:file { read write open getattr create unlink };
+
+# UID app sandbox management
+allow uid_dom_t app_sandbox_t:process { transition };
+allow uid_dom_t app_sandbox_t:dir { read search };
+allow uid_dom_t app_sandbox_t:fd use;
+
+# UID system UI
+allow uid_dom_t self:unix_dgram_socket { sendto recvfrom };
+
+###########################################
+# Application Sandbox Rules
+###########################################
+
+# Apps have no network access by default
+allow app_sandbox_t self:process { getattr };
+allow app_sandbox_t app_data_t:file { read write open getattr };
+allow app_sandbox_t app_data_t:dir { read search };
+
+# Apps cannot access system data
+neverallow app_sandbox_t sys_data_t:file *;
+neverallow app_sandbox_t sys_data_t:dir *;
+
+# App IPC is mediated by UID
+allow app_sandbox_t uid_dom_t:unix_dgram_socket { sendto };
+
+###########################################
+# OIPES Client Rules
+###########################################
+
+allow oipes_client_t self:tcp_socket { create bind connect sendto recvfrom };
+corenet_tcp_connect_all_ports(oipes_client_t)
+allow oipes_client_t sys_data_t:file { read write };
+
+###########################################
+# Permission Level Constraints
+###########################################
+
+# Note: constrain/mlsconstrain are not permitted in loadable policy
+# modules; enforce level/MLS constraints in the base policy instead.

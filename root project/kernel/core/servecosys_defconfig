@@ -99,9 +99,14 @@ CONFIG_MODULE_SIG_SHA256=y
 # ============================================================================
 
 # Btrfs - 原子快照支持
+# 注意: 勿开启 CONFIG_BTRFS_FS_CHECK_INTEGRITY。
+# 6.6 内核已回移植 CVE-2024-35949 的 WRITTEN 硬校验(tree-checker.c __btrfs_check_leaf),
+# 而 btrfs_mark_buffer_dirty() 在 CHECK_INTEGRITY 下会对"刚 COW 尚未写回(无 WRITTEN)"的
+# 脏 leaf 立即调用 btrfs_check_leaf(), 导致 mount/运行时反复报
+# "corrupt leaf: invalid flag for leaf, WRITTEN not set" 并启动失败。
 CONFIG_BTRFS_FS=y
 CONFIG_BTRFS_FS_POSIX_ACL=y
-CONFIG_BTRFS_FS_CHECK_INTEGRITY=y
+# CONFIG_BTRFS_FS_CHECK_INTEGRITY is not set
 
 # 其他必需文件系统
 CONFIG_EXT4_FS=y
@@ -113,8 +118,6 @@ CONFIG_TMPFS_POSIX_ACL=y
 CONFIG_PROC_FS=y
 CONFIG_SYSFS=y
 CONFIG_DEVPTS_FS=y
-CONFIG_DEVTMPFS=y
-CONFIG_DEVTMPFS_MOUNT=y
 CONFIG_DEVKMEM=n
 
 # ============================================================================
@@ -122,7 +125,6 @@ CONFIG_DEVKMEM=n
 # ============================================================================
 
 CONFIG_NET=y
-CONFIG_UNIX=y
 CONFIG_INET=y
 CONFIG_IP_MULTICAST=y
 CONFIG_IP_ADVANCED_ROUTER=y
@@ -192,13 +194,6 @@ CONFIG_IWLMVM=m
 CONFIG_SATA_AHCI=m
 CONFIG_NVME_CORE=m
 CONFIG_BLK_DEV_NVME=m
-CONFIG_VIRTIO=y
-CONFIG_VIRTIO_PCI=y
-CONFIG_VIRTIO_BLK=y
-CONFIG_VIRTIO_BLK_SCSI=y
-CONFIG_VIRTIO_PCI_LEGACY=y
-CONFIG_VIRTIO_BALLOON=y
-
 
 # ============================================================================
 # 内核模块支持

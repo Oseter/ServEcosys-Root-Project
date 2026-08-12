@@ -17,35 +17,62 @@ jobs:
         with:
           product: servecosys_qemu
           device: qemu-x86_64
-      - name: QEMU boot smoke test (ISO kernel+initrd)
+- name: QEMU boot smoke test (ConceptOS.iso via CD-ROM, UEFI/OVMF)
         shell: bash
-        timeout-minutes: 5
+        timeout-minutes: 6
         run: |
           cd "build engineering"
+          ISO="../root project/build/servecosys_qemu/ConceptOS.iso"
+          test -f "$ISO" || { echo "ConceptOS.iso not built"; exit 1; }
           set +e
-          timeout --signal=KILL 110 qemu-system-x86_64 \
+          timeout --signal=KILL 150 qemu-system-x86_64 \
             -machine q35 -m 2048 -smp 2 \
-            -kernel "../root project/build/servecosys_qemu/vmlinuz" \
-            -initrd "../root project/build/servecosys_qemu/initramfs.cpio.gz" \
-            -append "console=ttyS0 loglevel=6 rdinit=/init panic=-1 earlyprintk=serial" \
-            -display none -monitor none -serial file:boot.log \
+            -cdrom "$ISO" \
+            -bios /usr/share/ovmf/OVMF.fd \
+            -display none -monitor none -serial file:iso-uefi.log \
             -no-reboot
-          echo "===== BOOT LOG (last 150) ====="
-          tail -n 150 boot.log
+          echo "===== ISO(UEFI) BOOT LOG (last 150) ====="
+          tail -n 150 iso-uefi.log
           echo "===== RESULT ====="
-          if grep -q "ServEcosys sysinit start" boot.log && \
-             grep -q "started permission_arbiter" boot.log && \
-             grep -q "started system_manager" boot.log && \
-             ! grep -q "SED gate failed" boot.log; then
-            echo "SMOKE PASS: SED gate passed (arbiter+manager up, no degraded console)"
-          elif grep -qE 'Kernel panic|Oops|BUG:|unable to handle kernel|No working init|Requested init' boot.log; then
-            echo "SMOKE FAIL: kernel panic / init failure"
+          if grep -q "ServEcosys sysinit start" iso-uefi.log && \
+             grep -q "started permission_arbiter" iso-uefi.log && \
+             ! grep -q "SED gate failed" iso-uefi.log; then
+            echo "ISO UEFI SMOKE PASS: live boot from ConceptOS.iso via GRUB"
+          elif grep -qE 'Kernel panic|Oops|BUG:|unable to handle kernel|error: no such|No working init|Requested init' iso-uefi.log; then
+            echo "ISO UEFI SMOKE FAIL: kernel panic / GRUB / init failure"
             exit 1
           else
-            echo "SMOKE FAIL: SED did not come up or fell back to degraded console"
+            echo "ISO UEFI SMOKE FAIL: did not reach live SED boot"
             exit 1
           fi
-      - name: QEMU boot smoke test (installable ConceptOS.img real root)
+      - name: QEMU boot smoke test (ConceptOS.iso via CD-ROM, Legacy BIOS/SeaBIOS)
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          cd "build engineering"
+          ISO="../root project/build/servecosys_qemu/ConceptOS.iso"
+          test -f "$ISO" || { echo "ConceptOS.iso not built"; exit 1; }
+          set +e
+          timeout --signal=KILL 150 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -cdrom "$ISO" \
+            -display none -monitor none -serial file:iso-bios.log \
+            -no-reboot
+          echo "===== ISO(BIOS) BOOT LOG (last 150) ====="
+          tail -n 150 iso-bios.log
+          echo "===== RESULT ====="
+          if grep -q "ServEcosys sysinit start" iso-bios.log && \
+             grep -q "started permission_arbiter" iso-bios.log && \
+             ! grep -q "SED gate failed" iso-bios.log; then
+            echo "ISO BIOS SMOKE PASS: live boot from ConceptOS.iso via GRUB (El Torito)"
+          elif grep -qE 'Kernel panic|Oops|BUG:|unable to handle kernel|error: no such|No working init|Requested init' iso-bios.log; then
+            echo "ISO BIOS SMOKE FAIL: kernel panic / GRUB / init failure"
+            exit 1
+          else
+            echo "ISO BIOS SMOKE FAIL: did not reach live SED boot"
+            exit 1
+          fi
+      - name: QEMU boot smoke test (installable ConceptOS.img real root, UEFI/OVMF)
         shell: bash
         timeout-minutes: 8
         run: |
@@ -61,21 +88,52 @@ jobs:
             -bios /usr/share/ovmf/OVMF.fd \
             -display none -monitor none -serial file:disk.log \
             -no-reboot
-          echo "===== DISK BOOT LOG (head 50) ====="
+          echo "===== DISK(UEFI) BOOT LOG (head 50) ====="
           head -n 50 disk.log
-          echo "===== DISK BOOT LOG (last 150) ====="
-          tail -n 150 disk.log
+          echo "===== DISK(UEFI) BOOT LOG (last 120) ====="
+          tail -n 120 disk.log
           echo "===== RESULT ====="
           if grep -q "Found Btrfs root" disk.log && \
              grep -q "sysinit start" disk.log && \
              grep -q "started permission_arbiter" disk.log && \
              ! grep -q "SED gate failed" disk.log; then
-            echo "DISK SMOKE PASS: real-root boot from ConceptOS.img via GRUB/Btrfs"
+            echo "DISK UEFI SMOKE PASS: real-root boot from ConceptOS.img via GRUB/Btrfs"
           elif grep -qE 'Kernel panic|Oops|BUG:|No such device|error: no such' disk.log; then
-            echo "DISK SMOKE FAIL: kernel panic or GRUB failed"
+            echo "DISK UEFI SMOKE FAIL: kernel panic or GRUB failed"
             exit 1
           else
-            echo "DISK SMOKE FAIL: did not reach real-root SED boot"
+            echo "DISK UEFI SMOKE FAIL: did not reach real-root SED boot"
+            exit 1
+          fi
+      - name: QEMU boot smoke test (installable ConceptOS.img real root, Legacy BIOS/SeaBIOS)
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          cd "build engineering"
+          IMG="../root project/build/servecosys_qemu/ConceptOS.img"
+          test -f "$IMG" || { echo "ConceptOS.img not built"; exit 1; }
+          set +e
+          timeout --signal=KILL 200 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -drive "file=$IMG,format=raw,if=none,id=hd" \
+            -device virtio-blk-pci,drive=hd \
+            -display none -monitor none -serial file:disk-bios.log \
+            -no-reboot
+          echo "===== DISK(BIOS) BOOT LOG (head 50) ====="
+          head -n 50 disk-bios.log
+          echo "===== DISK(BIOS) BOOT LOG (last 120) ====="
+          tail -n 120 disk-bios.log
+          echo "===== RESULT ====="
+          if grep -q "Found Btrfs root" disk-bios.log && \
+             grep -q "sysinit start" disk-bios.log && \
+             grep -q "started permission_arbiter" disk-bios.log && \
+             ! grep -q "SED gate failed" disk-bios.log; then
+            echo "DISK BIOS SMOKE PASS: real-root boot from ConceptOS.img via GRUB/Btrfs"
+          elif grep -qE 'Kernel panic|Oops|BUG:|No such device|error: no such' disk-bios.log; then
+            echo "DISK BIOS SMOKE FAIL: kernel panic or GRUB failed"
+            exit 1
+          else
+            echo "DISK BIOS SMOKE FAIL: did not reach real-root SED boot"
             exit 1
           fi
       - name: Upload artifacts

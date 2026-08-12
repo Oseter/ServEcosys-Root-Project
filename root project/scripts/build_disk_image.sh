@@ -4,22 +4,26 @@
 #
 # 借鉴 Ubuntu / Android 镜像布局：
 #   - GPT 分区表
-#     p1: EFI System Partition (FAT32, grub-x86_64-efi + vmlinuz + initramfs)
-#     p2: Btrfs 根分区（顶层含子卷 @system / @data / @snapshots）
+#     p1: BIOS Boot (ef02, 1MiB, grub i386-pc core.img 驻地)
+#     p2: EFI System Partition (FAT32, grub-x86_64-efi + vmlinuz + initramfs)
+#     p3: Btrfs 根分区（顶层含子卷 @system / @data / @snapshots）
 #   - 子卷：
 #     @system    只读系统层（等价于 Ubuntu 的 @ 子卷）；initramfs 在 [5/7] 挂载
 #     @data      用户/应用数据（UID 应用 + app 数据；镜像内为空）
 #     @snapshots btrfs 快照目录（快照恢复由 system/snapshot.sh 管理）
 #
+# 双引导：UEFI (x86_64-efi, ESP) + Legacy BIOS (i386-pc, p1 BIOS boot + MBR)。
+# 因此镜像可被 dd 到 USB/SATA/NVMe 后在新旧电脑（UEFI 或 BIOS 固件）上直接启动，
+# 也可被 QEMU 以 OVMF(UEFI)/SeaBIOS(BIOS) 引导。
+#
 # initramfs 的 [4/7] 会 btrfs 探测并在 [5/7] 挂载 @system（真实根）。
-# 因此镜像可作为普通磁盘被 dd 到 USB/SATA/NVMe，或被 QEMU 直接引导，
-# 实现"给人用的可安装镜像"（无需 /dev/loop + Windows 帮助）。
 #
 # 用法:
 #   sudo PRODUCT=servecsys_qemu ./build_disk_image.sh [<输出路径>]
 #   # CI 内由 Makefile 的 `make img` 触发（工作目录 build engineering/）
 #
 # 依赖: sgdisk(gdisk) mkfs.fat(dosfstools) mkfs.btrfs(btrfs-progs) grub-install
+#       (grub-efi-amd64-bin + grub-pc-bin)
 #
 
 set -euo pipefail
@@ -43,6 +47,7 @@ KERNEL="${KERNEL:-$OUT_DIR/vmlinuz}"
 INITRAMFS="${INITRAMFS:-$OUT_DIR/initramfs.cpio.gz}"
 IMG_OUT="${1:-$OUT_DIR/ConceptOS.img}"
 IMG_SIZE_MB="${IMG_SIZE_MB:-2048}"
+BIOS_MB="1"
 EFI_MB="256"
 GRUB_CFG="$PROJECT_ROOT/boot/grub/grub.cfg"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -61,6 +66,11 @@ check_deps() {
         log_error "Missing dependencies: ${missing[*]}"
         log_info "Install: apt install -y gdisk dosfstools btrfs-progs grub-efi-amd64-bin grub-pc-bin"
         exit 1
+    fi
+    # i386-pc (Legacy BIOS) 的 module 文件来自 grub-pc-bin
+    if [ ! -d /usr/lib/grub/i386-pc ] && [ ! -d /usr/lib/grub/i386-pc.efi ]; then
+        log_warn "grub i386-pc modules not found (/usr/lib/grub/i386-pc) - Legacy BIOS boot will fail"
+        log_info "Install: apt install -y grub-pc-bin"
     fi
 }
 
@@ -95,10 +105,11 @@ main() {
     log_step "创建稀疏磁盘镜像: $IMG_OUT (${IMG_SIZE_MB}M)"
     truncate -s "${IMG_SIZE_MB}M" "$IMG_OUT"
 
-    log_step "写 GPT 分区表: p1=EFI(${EFI_MB}M) p2=Btrfs(余量)"
+    log_step "写 GPT 分区表: p1=BIOS-boot(${BIOS_MB}M) p2=EFI(${EFI_MB}M) p3=Btrfs(余量)"
     sgdisk --zap-all "$IMG_OUT" >/dev/null
-    sgdisk -n 1:0:+${EFI_MB}M -t 1:ef00 -c 1:"EFI System" "$IMG_OUT" >/dev/null
-    sgdisk -n 2:0:0   -t 2:8300 -c 2:"ConceptOS Root" "$IMG_OUT" >/dev/null
+    sgdisk -n 1:0:+${BIOS_MB}M -t 1:ef02 -c 1:"BIOS boot" "$IMG_OUT" >/dev/null
+    sgdisk -n 2:0:+${EFI_MB}M -t 2:ef00 -c 2:"EFI System" "$IMG_OUT" >/dev/null
+    sgdisk -n 3:0:0   -t 3:8300 -c 3:"ConceptOS Root" "$IMG_OUT" >/dev/null
     sgdisk -R -G "$IMG_OUT" >/dev/null 2>&1 || true
 
     log_step "挂载 loop 设备"
@@ -106,21 +117,21 @@ main() {
     log_info "  loop: $LOOP"
     # 等待 partscan 就绪
     for i in $(seq 1 30); do
-        [ -e "${LOOP}p1" ] && [ -e "${LOOP}p2" ] && break
+        [ -e "${LOOP}p2" ] && [ -e "${LOOP}p3" ] && break
         sleep 0.2
     done
-    if [ ! -e "${LOOP}p2" ]; then
+    if [ ! -e "${LOOP}p3" ]; then
         partprobe "$LOOP" 2>/dev/null || true
         sleep 1
     fi
-    [ -e "${LOOP}p1" ] || { log_error "partition nodes not ready (${LOOP}p1..p2)"; exit 1; }
     [ -e "${LOOP}p2" ] || { log_error "partition nodes not ready (${LOOP}p2)"; exit 1; }
+    [ -e "${LOOP}p3" ] || { log_error "partition nodes not ready (${LOOP}p3)"; exit 1; }
 
     log_step "格式化为文件系统: EFI=fat32, Root=btrfs"
-    mkfs.fat -F 32 -n "CEFI" "${LOOP}p1" >/dev/null
-    mkfs.btrfs -f -L "ConceptOS" "${LOOP}p2" >/dev/null
+    mkfs.fat -F 32 -n "CEFI" "${LOOP}p2" >/dev/null
+    mkfs.btrfs -f -L "ConceptOS" "${LOOP}p3" >/dev/null
 
-    mount "${LOOP}p2" "$TOP"
+    mount "${LOOP}p3" "$TOP"
     log_step "创建 Btrfs 子卷 @system @data @snapshots (Ubuntu/Android 风格)"
     btrfs subvolume create "$TOP/@system" >/dev/null
     btrfs subvolume create "$TOP/@data"   >/dev/null
@@ -129,8 +140,8 @@ main() {
     btrfs subvolume set-default "$TOP/@system" >/dev/null
     umount "$TOP"
 
-    mount -o subvol=@system "${LOOP}p2" "$ROOT"
-    mount "${LOOP}p1" "$EFI"
+    mount -o subvol=@system "${LOOP}p3" "$ROOT"
+    mount "${LOOP}p2" "$EFI"
 
     log_step "填充 @system 根内容"
     # 1) 系统层（sysinit + 嵌入的 /system 层）
@@ -177,16 +188,23 @@ EOF
         cp -a "$OUT_DIR/modules/." "$ROOT/lib/modules/"
     fi
 
-    log_step "安装 GRUB 到 ESP 并放置引导文件"
-    # movable 模式：把 BOOTX64.EFI 放到 EFI/BOOT（便于固件/OVMF 发现，无需 NV 配置项）
-    # EFI 安装不传 device（x86_64-efi 仅需 --efi-directory 即可）
+    log_step "安装 GRUB 双引导 (UEFI x86_64-efi + Legacy BIOS i386-pc)"
+    # 1) UEFI：movable 模式把 BOOTX64.EFI 放到 EFI/BOOT（固件/OVMF 直接发现，无需 NV 配置项）
     grub-install --target=x86_64-efi --efi-directory="$EFI" --boot-directory="$EFI/boot" \
         --removable --no-floppy 2>&1 | tail -n 3 || {
         grub-install --target=x86_64-efi --efi-directory="$EFI" --boot-directory="$EFI/boot" \
             --removable --no-floppy --recheck 2>&1 | tail -n 3 || {
-            log_error "grub-install 失败"; exit 1
+            log_error "grub-install (UEFI) 失败"; exit 1
         }
     }
+    log_info "  UEFI: x86_64-efi -> EFI/BOOT/BOOTX64.EFI"
+    # 2) Legacy BIOS：core.img 写入 MBR/p1(ef02)，模块与 grub.cfg 共用 ESP/boot
+    grub-install --target=i386-pc --boot-directory="$EFI/boot" --no-floppy "$LOOP" 2>&1 | tail -n 3 || {
+        grub-install --target=i386-pc --boot-directory="$EFI/boot" --no-floppy --recheck "$LOOP" 2>&1 | tail -n 3 || {
+            log_error "grub-install (BIOS i386-pc) 失败"; exit 1
+        }
+    }
+    log_info "  BIOS: i386-pc -> MBR + p1(BIOS boot)"
     mkdir -p "$EFI/boot/grub"
     cp "$GRUB_CFG" "$EFI/boot/grub/grub.cfg"
     cp "$KERNEL" "$EFI/boot/vmlinuz"
@@ -201,23 +219,23 @@ EOF
     log_step "自检 btrfs（host 侧, detach 前）"
     log_info "  superblock copies (0/1/2/3, generation each):"
     for _sb in 0 1 2 3; do
-        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p2" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*chunk_root[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
+        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p3" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*chunk_root[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
         log_info ""
     done
-    log_info "  SUPPORTED features (host btrfs-progs): $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -i 'incompat_flags' | head -1)"
-    log_info "  FS layout: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE 'sectorsize|nodesize|checksum' | sed 's/^ *//' | tr '\n' ';')"
-    log_info "  csum type: $(btrfs inspect-internal dump-super "${LOOP}p2" 2>/dev/null | grep -iE '^checksum|^csum_type|csum_type' | head -1)"
+    log_info "  SUPPORTED features (host btrfs-progs): $(btrfs inspect-internal dump-super "${LOOP}p3" 2>/dev/null | grep -i 'incompat_flags' | head -1)"
+    log_info "  FS layout: $(btrfs inspect-internal dump-super "${LOOP}p3" 2>/dev/null | grep -iE 'sectorsize|nodesize|checksum' | sed 's/^ *//' | tr '\n' ';')"
+    log_info "  csum type: $(btrfs inspect-internal dump-super "${LOOP}p3" 2>/dev/null | grep -iE '^checksum|^csum_type|csum_type' | head -1)"
     log_info "  leaf header flags (tree 1, first block):"
-    btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 8 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -t 1 "${LOOP}p3" 2>/dev/null | head -n 8 | sed 's/^/    /' || true
     log_info "  leaf header flags (tree id 3 = CHUNK_TREE):"
-    btrfs inspect-internal dump-tree -t 3 "${LOOP}p2" 2>/dev/null | head -n 10 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -t 3 "${LOOP}p3" 2>/dev/null | head -n 10 | sed 's/^/    /' || true
     log_info "  leaf header flags (tree id 7 = CSUM_TREE, all leaves):"
-    btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -t 7 "${LOOP}p3" 2>/dev/null | sed 's/^/    /' || true
     log_info "  targeted block dump (guest-failing leaves 31309824, 31457280):"
-    btrfs inspect-internal dump-tree -b 31309824 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
-    btrfs inspect-internal dump-tree -b 31457280 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -b 31309824 "${LOOP}p3" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -b 31457280 "${LOOP}p3" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
 
-    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+    if ! btrfs check --readonly "${LOOP}p3" >/dev/null 2>&1; then
         log_error "btrfs check(只读) 失败: 镜像内 btrfs 无效（host 侧已损坏）"
         exit 1
     else
@@ -225,14 +243,14 @@ EOF
     fi
 
     log_step "btrfs check --repair（统一 super 副本 + 置 WRITTEN，防 guest 内核 6.6 WRITTEN 检查失败）"
-    btrfs check --repair "${LOOP}p2" >"$WORK/repair.log" 2>&1
+    btrfs check --repair "${LOOP}p3" >"$WORK/repair.log" 2>&1
     _rc=$?
     tail -n 15 "$WORK/repair.log" | sed 's/^/    /' || true
     if [ "$_rc" -ne 0 ]; then
         log_error "btrfs check --repair 失败 (rc=$_rc)"
         exit 1
     fi
-    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+    if ! btrfs check --readonly "${LOOP}p3" >/dev/null 2>&1; then
         log_error "repair 后 btrfs check(只读) 失败"
         exit 1
     else
@@ -241,8 +259,8 @@ EOF
 
     log_step "最终 commit 探针：host 挂载最新子卷 -> 写探针 -> filesystem sync -> 干净卸载"
     PROBE="$WORK/probe"; mkdir -p "$PROBE"
-    if mount -o subvol=@system "${LOOP}p2" "$PROBE" 2>/dev/null; then
-        log_info "  mounted ${LOOP}p2 @system; writing probe + forcing commit"
+    if mount -o subvol=@system "${LOOP}p3" "$PROBE" 2>/dev/null; then
+        log_info "  mounted ${LOOP}p3 @system; writing probe + forcing commit"
         ( umask 077; : > "$PROBE/.servecosys_final_commit" ) 2>/dev/null || true
         sync
         btrfs filesystem sync "$PROBE" 2>/dev/null | sed 's/^/    /' || true
@@ -256,35 +274,41 @@ EOF
 
     log_info "  post-commit superblock copies (0/1, generation/root/bytenr):"
     for _sb in 0 1; do
-        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p2" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*csum[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
+        btrfs inspect-internal dump-super -s "$_sb" "${LOOP}p3" 2>/dev/null | grep -iE '^superblock:|^[[:space:]]*generation|^[[:space:]]*bytenr|^[[:space:]]*root[[:space:]]|^[[:space:]]*csum[[:space:]]' | sed "s/^/    [super:$_sb] /" || true
     done
-    if ! btrfs check --readonly "${LOOP}p2" >/dev/null 2>&1; then
+    if ! btrfs check --readonly "${LOOP}p3" >/dev/null 2>&1; then
         log_error "最终 commit 后 btrfs check(只读) 失败"
         exit 1
     else
         log_info "最终 commit 后 btrfs check (readonly) OK"
     fi
     log_info "  final tree-1 (ROOT_TREE) root leaf:"
-    btrfs inspect-internal dump-tree -t 1 "${LOOP}p2" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -t 1 "${LOOP}p3" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
     log_info "  final tree-7 (CSUM_TREE) root leaf:"
-    btrfs inspect-internal dump-tree -t 7 "${LOOP}p2" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -t 7 "${LOOP}p3" 2>/dev/null | head -n 4 | sed 's/^/    /' || true
     log_info "  post-repair full tree, leaves with generation >= 12 (suspicious newer blocks):"
-    btrfs inspect-internal dump-tree "${LOOP}p2" 2>/dev/null | grep -E '^leaf ' | awk '$5 ~ /^gen/ && $6 ~ /^[0-9]+/ && $6 >= 12 {print}' | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree "${LOOP}p3" 2>/dev/null | grep -E '^leaf ' | awk '$5 ~ /^gen/ && $6 ~ /^[0-9]+/ && $6 >= 12 {print}' | sed 's/^/    /' || true
     log_info "  targeted block dump (also 31326208, guest-failing this round):"
-    btrfs inspect-internal dump-tree -b 31326208 "${LOOP}p2" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
+    btrfs inspect-internal dump-tree -b 31326208 "${LOOP}p3" 2>/dev/null | head -n 12 | sed 's/^/    /' || true
 
     losetup -d "$LOOP" 2>/dev/null || true
     LOOP=""
 
     log_info "镜像完成: $IMG_OUT ($(wc -c < "$IMG_OUT") bytes)"
     log_info ""
-    log_info "  # 验证引导（与 CI 相同的 smoke）:"
+    log_info "  # 验证引导 - UEFI (OVMF):"
     log_info "  qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \\"
-    log_info "    -drive file=$IMG_OUT,format=raw,if=virtio -bios /usr/share/ovmf/OVMF.fd \\"
-    log_info "    -display none -monitor none -serial file:boot.img.log -no-reboot"
+    log_info "    -drive file=$IMG_OUT,format=raw,if=none,id=hd -device virtio-blk-pci,drive=hd \\"
+    log_info "    -bios /usr/share/ovmf/OVMF.fd -display none -monitor none -serial file:boot.img.log -no-reboot"
+    log_info ""
+    log_info "  # 验证引导 - Legacy BIOS (SeaBIOS, 默认):"
+    log_info "  qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \\"
+    log_info "    -drive file=$IMG_OUT,format=raw,if=none,id=hd -device virtio-blk-pci,drive=hd \\"
+    log_info "    -display none -monitor none -serial file:boot.img.bios.log -no-reboot"
     log_info ""
     log_info "  # 烧录到真实磁盘（Windows: Rufus / BalenaEtcher; Linux: dd）"
     log_info "  sudo dd if=$IMG_OUT of=/dev/sdX bs=4M status=progress && sync"
+    log_info "  # 注意: p1(BIOS boot)/p2(ESP)/p3(Btrfs) 布局, 勿用分区工具改写 p1"
 
     # 由 sudo 构建时产物归 root; 放宽权限便于非特权 CI 步骤(QEMU) 读写(其按 O_RDWR 打开 raw 盘)
     chmod 666 "$IMG_OUT" 2>/dev/null || true

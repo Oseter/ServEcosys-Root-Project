@@ -163,10 +163,19 @@ build_iso() {
 
     mkdir -p "$(dirname "$OUTPUT_ISO")"
 
-    if command -v grub-mkrescue &> /dev/null; then
-        # 使用 GRUB 作为引导加载器生成 ISO
+if command -v grub-mkrescue &> /dev/null; then
+        # 使用 GRUB 创建完整可启动混合 ISO（El Torito BIOS + UEFI，grub-mkrescue 自动嵌入）
         log_info "  Using grub-mkrescue..."
-        grub-mkrescue -o "$OUTPUT_ISO" "$ISODIR" 2>/dev/null
+        GMR_LOG="$(mktemp)"
+        if grub-mkrescue --output="$OUTPUT_ISO" "$ISODIR" >"$GMR_LOG" 2>&1; then
+            tail -n 5 "$GMR_LOG" | sed 's/^/    /' || true
+        else
+            log_error "grub-mkrescue 失败 (rc=$?)"
+            tail -n 20 "$GMR_LOG" | sed 's/^/    /' || true
+            rm -f "$GMR_LOG"
+            exit 1
+        fi
+        rm -f "$GMR_LOG"
     else
         # 使用 xorriso 手动生成 UEFI 启动 ISO
         log_info "  Using xorriso..."
@@ -210,6 +219,7 @@ verify_iso() {
     log_info "============================================="
     log_info " QEMU 启动验证:"
     echo ""
+    echo "    # UEFI (OVMF):"
     echo "    qemu-system-x86_64 \\"
     echo "      -cdrom $OUTPUT_ISO \\"
     echo "      -m 2G \\"
@@ -217,18 +227,21 @@ verify_iso() {
     echo "      -bios /usr/share/ovmf/OVMF.fd \\"
     echo "      -vga virtio -display gtk"
     echo ""
-    echo "    无界面模式:"
+    echo "    # Legacy BIOS (SeaBIOS, 默认):"
     echo "    qemu-system-x86_64 \\"
     echo "      -cdrom $OUTPUT_ISO \\"
     echo "      -m 2G \\"
     echo "      -smp 2 \\"
-    echo "      -bios /usr/share/ovmf/OVMF.fd \\"
-    echo "      -nographic \\"
-    echo "      -kernel /boot/vmlinuz \\"
-    echo "      -initrd /boot/initramfs.cpio.gz \\"
-    echo "      -append \"console=ttyS0\""
+    echo "      -display gtk"
     echo ""
-    log_info " iOS 下载后用 UTM 或 aQEMU 加载此 ISO"
+    echo "    无界面模式:"
+    echo "    qemu-system-x86_64 \\"
+    echo "      -cdrom $OUTPUT_ISO -m 2G -smp 2 -nographic"
+    echo ""
+    echo "    # 混合 ISO 亦可 dd 到 U 盘:"
+    echo "    sudo dd if=$OUTPUT_ISO of=/dev/sdX bs=4M status=progress && sync"
+    echo ""
+    log_info " iOS 下载后可用 UTM / aQEMU 加载此 ISO（UTM 选 UEFI 或 Legacy 均可）"
     log_info "============================================="
 }
 

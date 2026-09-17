@@ -15,7 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/build-conceptos
+      - name: Build ConceptOS (ISO only, skip disk image)
+        shell: bash
+        run: |
+          cd "build engineering"
+          make iso PRODUCT=servecosys_qemu DEVICE=qemu-x86_64
 
       - name: Create GitHub Release with ISO
         uses: softprops/action-gh-release@v2
@@ -41,7 +45,7 @@ jobs:
             - 构建环境：GitHub Actions (ubuntu-latest)
             - 内核：Linux 6.6 LTS（内核中央原子化 + guard 模块 + Btrfs 快照）
           files: |
-            root project/build/ConceptOS.iso
-            root project/build/vmlinuz
-            root project/build/initramfs.cpio.gz
+            root project/build/servecosys_qemu/ConceptOS.iso
+            root project/build/servecosys_qemu/vmlinuz
+            root project/build/servecosys_qemu/initramfs.cpio.gz
           fail_on_unmatched_files: true

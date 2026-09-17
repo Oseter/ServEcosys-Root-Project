@@ -59,7 +59,14 @@ ipc_error_t ipc_client_connect(ipc_channel_t *ch, const char *path) {
 
 ipc_error_t ipc_send(ipc_channel_t *ch, const ipc_message_t *msg) {
     if (!ch || !msg || ch->fd < 0) return IPC_ERR_SEND;
-    if (write(ch->fd, msg, sizeof(*msg)) < 0) return IPC_ERR_SEND;
+
+    /* 循环写满消息 */
+    size_t total = 0;
+    while (total < sizeof(*msg)) {
+        ssize_t n = write(ch->fd, ((const char *)msg) + total, sizeof(*msg) - total);
+        if (n <= 0) return IPC_ERR_SEND;
+        total += n;
+    }
     return IPC_OK;
 }
 
@@ -72,10 +79,18 @@ ipc_error_t ipc_recv(ipc_channel_t *ch, ipc_message_t *msg) {
     int client_fd = accept(ch->fd, (struct sockaddr *)&client, &addr_len);
     if (client_fd < 0) return IPC_ERR_RECV;
 
-    ssize_t n = read(client_fd, msg, sizeof(*msg));
-    close(client_fd);
-    if (n <= 0) return IPC_ERR_RECV;
+    /* 循环读满消息 */
+    size_t total = 0;
+    while (total < sizeof(*msg)) {
+        ssize_t n = read(client_fd, ((char *)msg) + total, sizeof(*msg) - total);
+        if (n <= 0) {
+            close(client_fd);
+            return IPC_ERR_RECV;
+        }
+        total += n;
+    }
 
+    close(client_fd);
     return IPC_OK;
 }
 

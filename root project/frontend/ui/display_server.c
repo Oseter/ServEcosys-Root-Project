@@ -189,8 +189,20 @@ int main(int argc, char *argv[])
     const char *fb_dev = argc > 1 ? argv[1] : FB_DEVICE;
 
     if (open_display(fb_dev) != 0) {
-        fprintf(stderr, "[DS] Failed to initialize display\n");
-        return 1;
+        /* 回退：尝试常见帧缓冲设备 */
+        const char *fallbacks[] = { "/dev/fb0", "/dev/fb1", "/dev/dri/card0", "/dev/dri/card1", NULL };
+        int opened = 0;
+        for (int i = 0; fallbacks[i]; i++) {
+            if (open_display(fallbacks[i]) == 0) {
+                fprintf(stdout, "[DS] Fallback opened: %s\n", fallbacks[i]);
+                opened = 1;
+                break;
+            }
+        }
+        if (!opened) {
+            fprintf(stderr, "[DS] Failed to initialize any display device\n");
+            return 1;
+        }
     }
 
     display_clear(0x1A1A2E);

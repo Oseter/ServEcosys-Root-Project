@@ -137,21 +137,33 @@ static int request_arbiter(const arbiter_request_t *req, arbiter_response_t *res
         return -1;
     }
 
-    if (write(fd, req, sizeof(*req)) != (ssize_t)sizeof(*req)) {
-        close(fd);
-        return -1;
+    /* 循环写满请求 */
+    size_t total = 0;
+    while (total < sizeof(*req)) {
+        ssize_t n = write(fd, ((char *)req) + total, sizeof(*req) - total);
+        if (n <= 0) {
+            close(fd);
+            return -1;
+        }
+        total += n;
     }
 
-    int ok = -1;
-    ssize_t n = read(fd, resp, sizeof(*resp));
-    if (n > 0)
-        ok = 0;
+    /* 循环读满响应 */
+    total = 0;
+    while (total < sizeof(*resp)) {
+        ssize_t n = read(fd, ((char *)resp) + total, sizeof(*resp) - total);
+        if (n <= 0) {
+            close(fd);
+            return -1;
+        }
+        total += n;
+    }
 
     close(fd);
-    return ok;
+    return 0;
 }
 
-/* 向权限仲裁器登记本进程为唯一授权源 */
+/* 向权限仲裁器登记本进程为唯一授权源 —— 带重试 */
 static int register_as_manager(void)
 {
     arbiter_request_t req;
@@ -163,10 +175,18 @@ static int register_as_manager(void)
     req.pid = getpid();
     req.request_id = 1;
 
-    if (request_arbiter(&req, &resp) != 0 || resp.status != 0) {
-        fprintf(stderr, "[MGR] Failed to register as manager: %s\n", resp.reason);
-        return -1;
+    for (int attempt = 1; attempt <= 30; attempt++) {
+        if (request_arbiter(&req, &resp) == 0 && resp.status == 0) {
+            fprintf(stdout, "[MGR] Registered as System Manager (PID %d)\n", getpid());
+            audit("registered as manager pid=%d", getpid());
+            return 0;
+        }
+        fprintf(stderr, "[MGR] Register attempt %d/30 failed: %s\n", attempt, resp.reason);
+        sleep(1);
     }
+    fprintf(stderr, "[MGR] Failed to register as manager after 30 attempts\n");
+    return -1;
+}
 
     fprintf(stdout, "[MGR] Registered as System Manager (PID %d)\n", getpid());
     audit("registered as manager pid=%d", getpid());
@@ -361,15 +381,29 @@ static int cli_send_console(console_cmd_t cmd, pid_t target, int level)
     msg.target_pid = target;
     msg.level = level;
 
-    int ok = -1;
-    if (write(fd, &msg, sizeof(msg)) == (ssize_t)sizeof(msg)) {
-        char reply[512];
-        ssize_t n = read(fd, reply, sizeof(reply) - 1);
-        if (n > 0) {
-            reply[n] = 0;
-            fprintf(stdout, "%s", reply);
-            ok = 0;
+    /* 循环写满请求 */
+    size_t total = 0;
+    while (total < sizeof(msg)) {
+        ssize_t n = write(fd, ((char *)&msg) + total, sizeof(msg) - total);
+        if (n <= 0) {
+            close(fd);
+            return -1;
         }
+        total += n;
+    }
+
+    int ok = -1;
+    char reply[512];
+    total = 0;
+    while (total < sizeof(reply) - 1) {
+        ssize_t n = read(fd, reply + total, sizeof(reply) - 1 - total);
+        if (n <= 0) break;
+        total += n;
+    }
+    if (total > 0) {
+        reply[total] = 0;
+        fprintf(stdout, "%s", reply);
+        ok = 0;
     }
 
     close(fd);

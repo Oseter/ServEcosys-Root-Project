@@ -85,7 +85,8 @@ if [ -f "$FINGERPRINT_SYSFS" ]; then
     echo "  Fingerprint: $FINGERPRINT"
 
     if [ -f /boot/servecosys/fingerprint.bin ]; then
-        STORED_FP=$(cat /boot/servecosys/fingerprint.bin | hexdump -C 2>/dev/null | head -1 || echo "")
+        # fingerprint.bin 存 raw 32 字节，读取转为 64 字符 hex 字符串比较
+        STORED_FP=$(xxd -p -c 32 /boot/servecosys/fingerprint.bin 2>/dev/null | tr -d '\n')
         if [ -n "$STORED_FP" ] && [ "$FINGERPRINT" != "$STORED_FP" ]; then
             echo "  [WARN] Hardware fingerprint changed!"
             echo "  [WARN] New hardware detected or hardware modified."
@@ -188,6 +189,23 @@ if [ -z "$ROOT_DEV" ]; then
     echo "Dropping to emergency shell..."
     exec /bin/sh
 fi
+
+# ============================================
+# [4.5/7] Ensure Btrfs subvolumes exist (first boot)
+# ============================================
+echo "[4.5/7] Ensuring Btrfs subvolumes..."
+# Mount top-level read-write briefly to create subvolumes if missing
+mount -t btrfs "$ROOT_DEV" /mnt/btrfs-root 2>/dev/null || { echo "  [ERROR] cannot mount Btrfs top-level"; exec /bin/sh; }
+
+for sv in @system @data @snapshots; do
+    if ! btrfs subvolume list /mnt/btrfs-root 2>/dev/null | grep -q " $sv$"; then
+        echo "  Creating missing subvolume: $sv"
+        btrfs subvolume create "/mnt/btrfs-root/$sv" 2>/dev/null || { echo "  [ERROR] failed to create $sv"; exec /bin/sh; }
+    fi
+done
+
+umount /mnt/btrfs-root 2>/dev/null || true
+rmdir /mnt/btrfs-root 2>/dev/null || true
 
 # ============================================
 # [5/7] Mount @system subvolume

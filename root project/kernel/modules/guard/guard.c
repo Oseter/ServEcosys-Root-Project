@@ -43,6 +43,7 @@
 #include <linux/notifier.h>
 #include <linux/kdebug.h>
 #include <linux/version.h>
+#include <linux/crc32.h>
 
 #define SERVECOSYS_GUARD_VERSION "0.1.0"
 
@@ -68,21 +69,10 @@ struct guard_oops_rec {
 #define GUARD_OOPS_MAX 32
 static struct guard_oops_rec guard_oops[GUARD_OOPS_MAX];
 
-static u32 guard_crc32(const u8 *data, size_t len)
-{
-    u32 crc = 0xFFFFFFFF;
-    size_t i;
-    int b;
-    for (i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (b = 0; b < 8; b++)
-            crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
-    }
-    return ~crc;
-}
-
-/* rodata 哨兵区 CRC：模块持有一处只读哨兵，运行时若被改写即触发告警 */
-static const char guard_sentinel[64] =
+/* rodata 哨兵区 CRC：模块持有一处只读哨兵，运行时若被改写即触发告警
+ * 使用 __attribute__((used, section(".rodata"))) 防止编译器优化掉
+ */
+static const char guard_sentinel[64] __attribute__((used, section(".rodata"))) =
     "ServEcosysGuardSentinel"
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc";
 static u32 guard_rodata_base_crc;
@@ -93,8 +83,8 @@ static void guard_rebuild_rodata_crc(void)
     if (!guard_rodata_check)
         return;
     mutex_lock(&guard_lock);
-    guard_rodata_base_crc = guard_crc32((const u8 *)guard_sentinel,
-                                        guard_rodata_sample_len);
+    guard_rodata_base_crc = crc32_le(0, (const u8 *)guard_sentinel,
+                                     guard_rodata_sample_len);
     mutex_unlock(&guard_lock);
 }
 
@@ -105,7 +95,7 @@ static int guard_rodata_tampered(void)
 
     if (!guard_rodata_check)
         return 0;
-    crc = guard_crc32((const u8 *)guard_sentinel, guard_rodata_sample_len);
+    crc = crc32_le(0, (const u8 *)guard_sentinel, guard_rodata_sample_len);
     if (crc != guard_rodata_base_crc) {
         pr_emerg("ServEcosys Guard: rodata sentinel tampered! "
                  "base=%08x now=%08x\n", guard_rodata_base_crc, crc);

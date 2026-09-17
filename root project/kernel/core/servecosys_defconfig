@@ -204,6 +204,10 @@ CONFIG_VIRTIO_BLK_SCSI=y
 CONFIG_VIRTIO_PCI_LEGACY=y
 CONFIG_VIRTIO_BALLOON=y
 
+# Live ISO / loopback 支持
+CONFIG_BLK_DEV_LOOP=m
+CONFIG_BLK_DEV_LOOP_MIN_COUNT=8
+
 # ============================================================================
 # 内核模块支持
 # ============================================================================
@@ -275,6 +279,10 @@ CONFIG_MICROCODE_AMD=y
 CONFIG_RETPOLINE=y
 CONFIG_X86_INTEL_PSTATE=y
 CONFIG_X86_AMD_PSTATE=m
+
+# EFI Stub 支持（内核作为 UEFI 应用直接启动）
+CONFIG_EFI_STUB=y
+CONFIG_EFI_MIXED=y
 
 # ============================================================================
 # 移除不必要的功能

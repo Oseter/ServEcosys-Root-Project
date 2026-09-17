@@ -13,6 +13,10 @@
 
 . /system/lib.sh
 
+# Validate required variables from lib.sh
+: "${RUN_DIR:=/var/run}"
+: "${LOG_DIR:=/var/log/sed}"
+
 # Root was mounted read-only by initramfs; make it writable first so the
 # runtime layout (/var/log/sed, /var/run) can be created before any log entry.
 mount -o remount,rw / 2>/dev/null || true
@@ -24,10 +28,10 @@ mkdir -p /system/backend/bin /system/backend/etc/selinux /system/frontend/bin \
 log "ServEcosys sysinit start"
 
 # Pseudo filesystems (moved over by initramfs; recreate if missing)
-mountpoint -q /proc 2>/dev/null || mount -t proc proc /proc 2>/dev/null
-mountpoint -q /sys  2>/dev/null || mount -t sysfs sysfs /sys 2>/dev/null
-mountpoint -q /dev  2>/dev/null || mount -t devtmpfs devtmpfs /dev 2>/dev/null
-mountpoint -q /run  2>/dev/null || mount -t tmpfs tmpfs /run 2>/dev/null
+for fs in "proc /proc proc" "sysfs /sys sysfs" "devtmpfs /dev devtmpfs" "tmpfs /run tmpfs"; do
+    set -- $fs
+    mountpoint -q "$2" 2>/dev/null || mount -t "$1" "$1" "$2" 2>/dev/null || log "[WARN] Failed to mount $2 ($1)"
+done
 
 # 1. Backend Security Domain
 if [ -f /system/sed-bootstrap.sh ]; then
@@ -37,7 +41,7 @@ else
 fi
 
 # 2. Frontend Interaction Domain - gated on SED authority
-if [ -e "$RUN_DIR/permission_arbiter.pid" ] && [ -e "$RUN_DIR/system_manager.pid" ]; then
+if [ -e "$PID_PERM_ARBITER" ] && [ -e "$PID_SYS_MGR" ]; then
     if [ -f /system/uid-bootstrap.sh ]; then
         /system/uid-bootstrap.sh
     else
@@ -50,13 +54,20 @@ fi
 log "=== 概念OS (ConceptOS) - ServEcosys 系操作系统标准与概念呈现 ==="
 sed_status() {
     for d in permission_arbiter system_manager ipc_bus hal_manager oipes_client; do
-        p="$RUN_DIR/$d.pid"
+        case "$d" in
+            permission_arbiter) p="$PID_PERM_ARBITER" ;;
+            system_manager)     p="$PID_SYS_MGR" ;;
+            ipc_bus)            p="$PID_IPC_BUS" ;;
+            hal_manager)        p="$PID_HAL_MGR" ;;
+            oipes_client)       p="$PID_OIPES" ;;
+            *) continue ;;
+        esac
         if [ -f "$p" ]; then log "    $d: pid $(cat "$p")"; else log "    $d: DOWN"; fi
     done
 }
 log "  SED:"; sed_status
 log "  UID:   display_server input_manager compositor system_ui"
-log "  Console: system_manager -> /var/run/servecosys_mgr.sock"
+log "  Console: system_manager -> $SOCK_SYS_MGR"
 
 # 启动守护进程监督器（后台，崩溃自动拉起）
 if [ -x /system/supervise.sh ]; then

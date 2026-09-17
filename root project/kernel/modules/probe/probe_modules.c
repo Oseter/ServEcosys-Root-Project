@@ -7,12 +7,36 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #define SERVECOSYS_PROBE_VERSION "0.1.0"
 #define FINGERPRINT_SIZE 32
 
 static u8 cached_fingerprint[FINGERPRINT_SIZE];
 static bool fingerprint_cached = false;
+
+/* sysfs 接口：/sys/kernel/servecosys/fingerprint */
+static struct kobject *servecosys_kobj;
+
+static ssize_t fingerprint_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    if (!fingerprint_cached)
+        return -ENODATA;
+
+    return sysfs_emit(buf, "%*phN\n", FINGERPRINT_SIZE, cached_fingerprint);
+}
+
+static struct kobj_attribute fingerprint_attr = __ATTR_RO(fingerprint);
+
+static struct attribute *servecosys_attrs[] = {
+    &fingerprint_attr.attr,
+    NULL,
+};
+
+static struct attribute_group servecosys_attr_group = {
+    .attrs = servecosys_attrs,
+};
 
 static int sha256_hash(const u8 *data, size_t data_len, u8 *out_hash, size_t hash_size)
 {
@@ -136,12 +160,31 @@ EXPORT_SYMBOL(servecosys_generate_fingerprint);
 
 static int __init servecosys_probe_init(void)
 {
+    int ret;
+
+    servecosys_kobj = kobject_create_and_add("servecosys", kernel_kobj);
+    if (!servecosys_kobj) {
+        pr_err("ServEcosys Probe: Failed to create kobject\n");
+        return -ENOMEM;
+    }
+
+    ret = sysfs_create_group(servecosys_kobj, &servecosys_attr_group);
+    if (ret) {
+        kobject_put(servecosys_kobj);
+        pr_err("ServEcosys Probe: Failed to create sysfs group\n");
+        return ret;
+    }
+
     pr_info("ServEcosys Probe Module v%s (SHA256 hardware fingerprint)\n", SERVECOSYS_PROBE_VERSION);
     return 0;
 }
 
 static void __exit servecosys_probe_exit(void)
 {
+    if (servecosys_kobj) {
+        sysfs_remove_group(servecosys_kobj, &servecosys_attr_group);
+        kobject_put(servecosys_kobj);
+    }
     pr_info("ServEcosys Probe Module unloaded\n");
 }
 

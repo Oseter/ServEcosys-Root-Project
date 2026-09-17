@@ -451,15 +451,32 @@ int main(int argc, char *argv[])
         }
 
         perm_request_t req;
-        ssize_t n = read(client, &req, sizeof(req));
-        if (n > 0) {
+        /* 循环读满请求 */
+        size_t total = 0;
+        while (total < sizeof(req)) {
+            ssize_t n = read(client, ((char *)&req) + total, sizeof(req) - total);
+            if (n <= 0) {
+                total = 0;
+                break;
+            }
+            total += n;
+        }
+
+        if (total == sizeof(req)) {
             pid_t peer_pid = get_peer_pid(client);
 
             /* 先回收已退出进程，防止 PID 复用继承权限 / 表满 */
             reap_dead_processes();
 
             perm_response_t resp = handle_request(&req, peer_pid);
-            write(client, &resp, sizeof(resp));
+
+            /* 循环写满响应 */
+            total = 0;
+            while (total < sizeof(resp)) {
+                ssize_t n = write(client, ((char *)&resp) + total, sizeof(resp) - total);
+                if (n <= 0) break;
+                total += n;
+            }
 
             fprintf(stdout, "[ARBITER] Request #%d from PID %d (peer %d): %s\n",
                     req.request_id, req.pid, peer_pid, resp.reason);

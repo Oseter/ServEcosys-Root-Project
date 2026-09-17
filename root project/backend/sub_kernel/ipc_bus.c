@@ -1,11 +1,11 @@
 /**
  * ServEcosys IPC Bus - Inter-Domain Communication
  *
- * 职责�? * - 提供 SED �?UID 之间的安全通信
- * - 权能（capability）令牌管�? * - 消息路由与审�? * - 支持 binderfs/unix_socket/io_uring
+ * 职责�? * - 提供 SED �?UID 之间的安全通信
+ * - 权能（capability）令牌管�? * - 消息路由与审�? * - 支持 binderfs/unix_socket/io_uring
  *
- * 设计原则�? * - 最小权限：每个消息携带最小权能令�? * - 单向响应：请�?响应模式
- * - 可审计：所�?IPC 记录日志
+ * 设计原则�? * - 最小权限：每个消息携带最小权能令�? * - 单向响应：请�?响应模式
+ * - 可审计：所�?IPC 记录日志
  * - 可替换：传输层可更换
  */
 
@@ -225,9 +225,18 @@ int main(int argc, char *argv[])
         }
 
         ipc_message_t msg, response;
-        ssize_t n = read(client_fd, &msg, sizeof(msg));
+        /* 循环读满整个消息（SOCK_SEQPACKET 保序但单次 read 可能不足） */
+        size_t total = 0;
+        while (total < sizeof(msg)) {
+            ssize_t n = read(client_fd, ((char *)&msg) + total, sizeof(msg) - total);
+            if (n <= 0) {
+                total = 0;
+                break;
+            }
+            total += n;
+        }
 
-        if (n > 0) {
+        if (total == sizeof(msg)) {
             if (msg.type == IPC_MSG_HEARTBEAT) {
                 int sid = create_session(msg.sender_pid, msg.target_pid);
                 if (sid > 0)
@@ -235,7 +244,13 @@ int main(int argc, char *argv[])
             }
 
             route_message(&msg, &response);
-            write(client_fd, &response, sizeof(response));
+            /* 循环写满整个响应 */
+            total = 0;
+            while (total < sizeof(response)) {
+                ssize_t n = write(client_fd, ((char *)&response) + total, sizeof(response) - total);
+                if (n <= 0) break;
+                total += n;
+            }
         }
 
         close(client_fd);

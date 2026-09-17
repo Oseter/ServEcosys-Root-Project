@@ -84,6 +84,11 @@ static int notification_count = 0;
 static int next_notif_id = 1;
 static volatile sig_atomic_t running = 1;
 
+/* 权限级缓存：避免每秒连 arbiter */
+static int cached_perm_level = -2;  /* -2 = 未查询, -1 = 查询失败, >=0 = 缓存值 */
+static time_t perm_level_cache_time = 0;
+#define PERM_LEVEL_CACHE_TTL 30  /* 秒 */
+
 static char history[MAX_HISTORY][MAX_LINE];
 static int history_count = 0;
 static int history_pos = 0;
@@ -143,9 +148,18 @@ static char *format_time(void)
 /* 向权限仲裁器查询自身权限级；失败返回 -1 */
 static int query_level(pid_t me)
 {
+    time_t now = time(NULL);
+
+    /* 返回缓存值（若在 TTL 内） */
+    if (cached_perm_level >= -1 && now - perm_level_cache_time < PERM_LEVEL_CACHE_TTL)
+        return cached_perm_level;
+
     int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-    if (fd < 0)
+    if (fd < 0) {
+        cached_perm_level = -1;
+        perm_level_cache_time = now;
         return -1;
+    }
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -154,6 +168,8 @@ static int query_level(pid_t me)
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(fd);
+        cached_perm_level = -1;
+        perm_level_cache_time = now;
         return -1;
     }
 
@@ -179,14 +195,21 @@ static int query_level(pid_t me)
 
     if (write(fd, &req, sizeof(req)) != (ssize_t)sizeof(req)) {
         close(fd);
+        cached_perm_level = -1;
+        perm_level_cache_time = now;
         return -1;
     }
     memset(&resp, 0, sizeof(resp));
     if (read(fd, &resp, sizeof(resp)) != (ssize_t)sizeof(resp)) {
         close(fd);
+        cached_perm_level = -1;
+        perm_level_cache_time = now;
         return -1;
     }
     close(fd);
+
+    cached_perm_level = resp.current_level;
+    perm_level_cache_time = now;
     return resp.current_level;
 }
 

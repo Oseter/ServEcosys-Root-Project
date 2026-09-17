@@ -18,15 +18,40 @@ UID_BIN=/system/frontend/bin
 CHECK_INTERVAL=5
 
 # 声明需要监督的守护进程：<名称> <可执行文件> <pidfile>
-SERVICES="permission_arbiter|$SED_BIN/permission_arbiter.smle|$RUN_DIR/permission_arbiter.pid
-system_manager|$SED_BIN/system_manager.smle|$RUN_DIR/system_manager.pid
-ipc_bus|$SED_BIN/ipc_bus.smle|$RUN_DIR/ipc_bus.pid
-hal_manager|$SED_BIN/hal_manager.smle|$RUN_DIR/hal_manager.pid
-oipes_client|$SED_BIN/oipes_client.smle|$RUN_DIR/oipes_client.pid
-display_server|$UID_BIN/display_server.ssle|$RUN_DIR/display_server.pid
-input_manager|$UID_BIN/input_manager.ssle|$RUN_DIR/input_manager.pid
-compositor|$UID_BIN/compositor.ssle|$RUN_DIR/compositor.pid
-system_ui|$UID_BIN/system_ui.ssle|$RUN_DIR/system_ui.pid"
+# 使用数组而非字符串，避免 IFS 分割破坏字段
+SERVICES_NAME=(
+    "permission_arbiter"
+    "system_manager"
+    "ipc_bus"
+    "hal_manager"
+    "oipes_client"
+    "display_server"
+    "input_manager"
+    "compositor"
+    "system_ui"
+)
+SERVICES_EXE=(
+    "$SED_BIN/permission_arbiter.smle"
+    "$SED_BIN/system_manager.smle"
+    "$SED_BIN/ipc_bus.smle"
+    "$SED_BIN/hal_manager.smle"
+    "$SED_BIN/oipes_client.smle"
+    "$UID_BIN/display_server.ssle"
+    "$UID_BIN/input_manager.ssle"
+    "$UID_BIN/compositor.ssle"
+    "$UID_BIN/system_ui.ssle"
+)
+SERVICES_PIDFILE=(
+    "$PID_PERM_ARBITER"
+    "$PID_SYS_MGR"
+    "$PID_IPC_BUS"
+    "$PID_HAL_MGR"
+    "$PID_OIPES"
+    "$PID_DISPLAY"
+    "$PID_INPUT"
+    "$PID_COMPOSITOR"
+    "$PID_SYS_UI"
+)
 
 # 返回 0 = 进程存活；1 = 已死；2 = 无 pidfile
 is_alive() {
@@ -41,10 +66,11 @@ is_alive() {
 log "supervisor: starting with ${CHECK_INTERVAL}s interval"
 
 supervise_loop() {
-    for entry in $SERVICES; do
-        name=$(echo "$entry" | cut -d'|' -f1)
-        exe=$(echo "$entry" | cut -d'|' -f2)
-        pf=$(echo "$entry" | cut -d'|' -f3)
+    local i=0
+    while [ $i -lt ${#SERVICES_NAME[@]} ]; do
+        name=${SERVICES_NAME[$i]}
+        exe=${SERVICES_EXE[$i]}
+        pf=${SERVICES_PIDFILE[$i]}
 
         # 无 pidfile：若可执行文件存在且属安全门已过，则补齐拉起
         is_alive "$pf"
@@ -60,7 +86,7 @@ supervise_loop() {
 
         # 权限仲裁器未就绪前，UID 域守护进程不得私自先行
         if [ "$name" != "permission_arbiter" ] && [ "$name" != "system_manager" ]; then
-            if [ ! -e "$RUN_DIR/permission_arbiter.pid" ]; then
+            if [ ! -e "$PID_PERM_ARBITER" ]; then
                 continue
             fi
         fi
@@ -71,6 +97,7 @@ supervise_loop() {
             log "[ERROR] $name failed to respawn"
         fi
         sleep 1
+        i=$((i + 1))
     done
 }
 
